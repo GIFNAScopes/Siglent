@@ -4,7 +4,7 @@ Data AcQuisition software for Siglent SDS7000A series oscilloscopes. Based on se
 
 ## Pre-requisites
 
-This project requires ROOT installation (version > 6.24) and some python modules. The requisites for the python modules are under `requirements.txt` file.
+This project requires ROOT installation (version > 6.24) and some python modules. The requisites for the python modules are under `pythonRequirements.txt` file.
 
 ## Installation
 
@@ -32,7 +32,7 @@ source ../install/thisSiglent.sh
 Make sure that the oscilloscope is reachable and in the same network Make sure that the config file (aka `siglent.cfg`) contains the proper oscilloscope address `TCPIP0::192.168.0.102::INSTR` in the template config.
 
 Usefull commands:
-* Start DAQ with the oscillosope `Siglent_DAQ.py` note that you have to provide a config file, please copy it in your working folder, a template is available under insall/macros.
+* Start DAQ with the oscillosope `Siglent_DAQ.py` note that you have to provide a config file, please copy it in your working folder, a template is available under install/config.
 * Instead of `root` use `SigRoot` which is the same but with the TDS libraries and macros loaded.
 * Analyze data from binary file `analyzeSiglent --f TFIIIxxx.csv`
 * Decode binary file and load it in SigRoot `processdata TFIII0000.csv`
