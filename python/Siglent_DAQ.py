@@ -201,15 +201,17 @@ def save_acquisition_data_to_csv(df_preamble, df_frames, deadtime_s: float = 0.0
     Store DAQ data in a CSV file.
     First preamble and then the datafranes
     """
-    if df_preamble.empty and df_frames.empty:
-        print(f"Dataframe and preamble empty, not saved on {filename}")
+    if df_preamble.empty or df_frames.empty:
+        print(f"Dataframe or preamble empty, not saved on {filename}")
         return
 
     df_preamble['deadtime_us'] = deadtime_s * 1_000_000 # Store in us for convenience
 
     with open(filename, 'a', newline='') as f:
-        if not df_frames.empty:
-            df_frames.to_csv(f, index=False, header=True, mode="a")
+        df_preamble.to_csv(f, index=True, header=True, mode="a")
+
+    with open(filename, 'a', newline='') as f:
+        df_frames.to_csv(f, index=False, header=True, mode="a")
 
 def find_next_available_filename(base_filename: str) -> int:
     """
