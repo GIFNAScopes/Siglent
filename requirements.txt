@@ -1,0 +1,5 @@
+packaging==25.0
+pandas==2.2.3
+python-dateutil==2.9.0.post0
+PyVISA==1.15.0
+yaml==6.0

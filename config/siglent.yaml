@@ -1,0 +1,5 @@
+# siglent.yaml
+address: "TCPIP0::192.168.0.102::INSTR"
+fileName: "Test"
+nFrames: 50
+eventsPerFile: 1000
