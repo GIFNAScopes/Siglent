@@ -27,7 +27,7 @@ fi
 export SIG_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
 export SIG_PATH=\\\${thisdir}
 export SIG_INCLUDE_PATH=\\\${thisdir}/inc
-export PATH=\\\$SIG_PATH/bin:\\\$_PATH
+export PATH=\\\$SIG_PATH/bin:\\\$SIG_PATH/python:\\\$_PATH
 export LD_LIBRARY_PATH=\\\$SIG_PATH/lib:\\\$_LD_LIBRARY_PATH
 export LIBRARY_PATH=\\\$LIBRARY_PATH:\\\$SIG_PATH/lib
 

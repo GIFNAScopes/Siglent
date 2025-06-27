@@ -34,6 +34,11 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/scripts
        COMPONENT install
        )
 
+find_package(Python3 REQUIRED)
+
+install(PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/python/Siglent_DAQ.py
+        DESTINATION python
+)
 
 #Create thisSiglent.sh
 include(thisSiglent)
