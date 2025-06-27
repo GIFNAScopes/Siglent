@@ -305,7 +305,7 @@ if __name__ == "__main__":
         file_number = find_next_available_filename(config['fileName'])
         n_files_suffix = 0
         output_filename = f"{base_name}{file_number:04d}.csv.{n_files_suffix:02d}"
-        sds = connect_to_scope(ip=config['address'])
+        sds = connect_to_scope(address=config['address'])
         # Configura para capturar nFrames
         setup_scope_for_sequence(sds, channel="C1", seq_count=config['nFrames'])
 
