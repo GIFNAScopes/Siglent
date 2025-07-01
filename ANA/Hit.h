@@ -36,7 +36,7 @@ public:
 
   Hit();
   ~Hit();
-  TH1F* getHisto( const int &ch );
+  TH1F* getHisto( const std::string & ch );
   std::vector<double> GetSignalSmoothed(int neighbours=5);
   void analyzeHit( );
 

@@ -32,7 +32,7 @@ std::map<std::string, double> read_preamble(std::ifstream &csv_file){
                 double val;
                 std::istringstream(value) >> val;
                 preamble[key] = val;
-                std::cout<<key<<" "<<val<<std::endl;
+                //std::cout<<key<<" "<<val<<std::endl;
             }
         }
     }
@@ -73,8 +73,10 @@ std::vector<std::string> getChannels(std::ifstream &csv_file){
   std::string str;
   std::getline(ss, str, ':');
     if(str =="#CHANNELS"){
-      while (getline(ss, str, ','))
+      while (getline(ss, str, ',')){
+        str.erase(std::remove_if(str.begin(), str.end(), isspace), str.end());
         channels.push_back(str);
+        }
     }
   
   return channels;
@@ -100,14 +102,8 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
    TTree tree ("tree", "Siglent data");
    std::vector<Hit> myHits(channels.size());
 
-   std::cout<<"Channels: ";
-     for(const auto &chan : channels)
-        std::cout<<chan<<", ";
-   std::cout<<std::endl;
-
-     for(int i=0;i<channels.size();i++){
+     for(int i=0;i<channels.size();i++)
        tree.Branch(channels[i].c_str(), &myHits[i]);
-     }
 
     do {
       int nFrames=0;
@@ -123,7 +119,8 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
           myHits[i].Delay = preamble["delay"];
           myHits[i].Interval = preamble["interval"];
           myHits[i].CodePerDiv = preamble["code"];
-          //myHits[i].DeadTime += preamble["deadtime_us"]*1E6;
+          deadTime += preamble["deadtime_us"];
+          myHits[i].DeadTime = deadTime;
           dataMap[i] = read_data(csv_file, nFrames, nPoints);
        }
 
@@ -131,11 +128,10 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
            for(int i=0;i<channels.size();i++){
              const auto& [tmstp, adc] = dataMap[i].front();
              myHits[i].id = eventID;
-             //myHits[i].TimeStamp = tmstp;
+             myHits[i].TimeStamp = tmstp;
              myHits[i].Pulse = adc;
              myHits[i].analyzeHit();
              dataMap[i].pop_front();
-             std::cout<<"Timestamp "<<channels[i]<< " "<<myHits[i].TimeStamp<<" "<<myHits[i].DeadTime*1E-6 <<" "<<myHits[i].Pulse[0]<<std::endl;
             }
            tree.Fill();
            eventID++;
@@ -145,8 +141,6 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
 
   std::cout<<"Done "<<eventID<<" event processed"<<std::endl;
   std::cout << "\nTotal entries filled into tree (before Write): " << tree.GetEntries() << std::endl;
-  tree.Print();
-  tree.Scan();
 
   fout->Write();
   fout->Close();
