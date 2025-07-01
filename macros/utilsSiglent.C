@@ -8,9 +8,9 @@ const std::vector <int> colors {kBlue, kRed, kGreen,kBlack };
 
 TFile * myFile=nullptr;
 TChain * tree=nullptr;
-std::vector<Hit *> myHits;
-std::vector<TH1F *> pulseAll;
-std::vector<TH1F *> histos;
+std::map<std::string, Hit *> myHits;
+std::map<std::string, TH1F *> pulseAll;
+std::map<std::string, TH1F *> histos;
 
 ///////////////////////////////////////////////////
 // Read spectrum from ascii file and store it in h
@@ -99,35 +99,38 @@ void readData(const std::string &fileName)
 
    for(NHITS=0;NHITS<4;NHITS++) {
     std::string brName = "C"+std::to_string(NHITS+1);
-    if(!tree->GetBranch(brName.c_str()))break;
+    if(!tree->GetBranch(brName.c_str()))continue;
+    Hit *hit = nullptr;
+    myHits[brName] = hit;
   }
 
-  myHits.resize(NHITS,nullptr);
+  std::cout<<"Number of channels "<<myHits.size()<<std::endl;
 
-  std::cout<<"Number of hits "<<NHITS<<std::endl;
-
-  for(int b=0;b<NHITS;b++){
-    std::string brName = "C"+std::to_string(b+1);
-    std::cout<<brName<<std::endl;
-    tree->SetBranchAddress(brName.c_str(), &myHits[b]);
+  int c=0;
+  for(auto & [brName, hit] : myHits ){
+    tree->SetBranchAddress(brName.c_str(), &hit);
     tree->GetEntry(0);
-    std::cout<<"CH "<<b+1<< " "<<  myHits[b]->TDiv<<" V/Div "<<std::endl;
+    std::cout<<brName<< " "<<  hit->TDiv<<" V/Div "<<std::endl;
+      if(c==0){
+        std::cout << "Sampling Rate: " << hit->Interval*1E9 << " ns/pt"<< std::endl;
+        std::cout << "Pulse Size: " << hit->Pulse.size() << " points"<<std::endl;
+        std::cout << "Pulse Length: "<< hit->Interval*1E9*hit->Pulse.size()<< " ns"<< std::endl;
+        std::cout << "Delay: " << hit->Delay*1E9 << " ns" << std::endl << std::endl;
+
+        std::cout << "N Entries: " << entries << std::endl;
+        double runStart = hit->TimeStamp;
+
+        tree->GetEntry(entries-1);
+        double runEnd = hit->TimeStamp;
+        double deadTime = hit->DeadTime*1E-6;
+
+        std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
+        std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
+        std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
+        tree->GetEntry(0);
+        c++;
+      }
   }
-
-  std::cout << "Sampling Rate: " << myHits[0]->Interval*1E9 << " ns/pt"<< std::endl;
-  std::cout << "Pulse Size: " << myHits[0]->Pulse.size() << " points"<<std::endl;
-  std::cout << "Pulse Length: "<< myHits[0]->Interval*1E9*myHits[0]->Pulse.size()<< " ns"<< std::endl;
-  std::cout << "Delay: " << myHits[0]->Delay*1E9 << " ns" << std::endl << std::endl;
-
-  std::cout << "N Entries: " << entries << std::endl;
-  double runStart = myHits[0]->TimeStamp;
-
-  tree->GetEntry(entries-1);
-  double runEnd = myHits[0]->TimeStamp;
-  double deadTime = myHits[0]->DeadTime;
-  std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
-  std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
-  std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
 
 }
 
@@ -143,34 +146,34 @@ void drawPulse(int p){
   tree->SetEventList(list);
 
   int ent = tree->GetEntryNumber(p);
-  cout << ent << endl;
+  cout<<"Drawing entry" << ent << endl;
 
   if(ent<0 || ent>= tree->GetEntries()){
     std::cout<<"Entry "<<p <<" out of range 0-"<<tree->GetEntries()-1<<std::endl;
     return;
   }
 
-   for(auto &h : histos){
+   for(auto &[chName, h] : histos)
      delete h;
-   }
-   histos.clear();
+
+  histos.clear();
 
   tree->GetEntry(ent); 
- 
-  histos.resize(NHITS);
- 
-  for(int iii=0;iii<NHITS;iii++){
-      histos[iii] = (TH1F *)(myHits[iii]->getHisto(iii));
-      histos[iii]->SetLineColor(colors[iii]);
-	if(iii==0){
-  	  histos[iii]->SetStats(0);
-	  histos[iii]->GetYaxis()->SetTitle("Amplitude (V)");
-	  histos[iii]->GetXaxis()->SetTitle("Time (s)");
-	  //histos[iii]->GetYaxis()->SetRangeUser(0,32768);
-	  histos[iii]->Draw();
+
+  int c=0;
+  for(auto & [chName, hit] : myHits ){
+      histos[chName] = (TH1F *)(hit->getHisto(chName));
+      histos[chName]->SetLineColor(colors[c%4]);
+	if(c==0){
+  	  histos[chName]->SetStats(0);
+	  histos[chName]->GetYaxis()->SetTitle("Amplitude (V)");
+	  histos[chName]->GetXaxis()->SetTitle("Time (s)");
+	  //histos[chName]->GetYaxis()->SetRangeUser(0,32768);
+	  histos[chName]->Draw();
 	} else {
-	  histos[iii]->Draw("SAME");
+	  histos[chName]->Draw("SAME");
 	}
+      c++;
   }
 
 }
@@ -182,14 +185,13 @@ void drawPulse(int p){
 void drawAllPulses(std::string fName ="")
 {
 
- for(auto &h : histos){
+ for(auto &[histoName, h] : histos)
     delete h;
- }
+
  histos.clear();
 
- for(auto &p : pulseAll){
+ for(auto &[pName, p] : pulseAll)
    delete p;
- }
 
  pulseAll.clear();
 
@@ -201,41 +203,41 @@ void drawAllPulses(std::string fName ="")
 
   if(max==0) max=tree->GetEntries(); //if no list selected use all pulses.
 
-  pulseAll.resize(NHITS);
-    for(int iii=0;iii<NHITS;iii++) {
-      std::string pName = "Pulse"+std::to_string(iii+1);
-      pulseAll[iii] = new TH1F (pName.c_str(), pName.c_str(),myHits[iii]->Pulse.size(),0,myHits[iii]->Pulse.size()*myHits[iii]->Interval);
-      pulseAll[iii]->GetYaxis()->SetTitle("Amplitude (V)");
-      pulseAll[iii]->GetXaxis()->SetTitle("Time (s)");
+    for(const auto & [chName, hit] : myHits ){
+      pulseAll[chName] = new TH1F (chName.c_str(), chName.c_str(),hit->Pulse.size(),0,hit->Pulse.size()*hit->Interval);
+      pulseAll[chName]->GetYaxis()->SetTitle("Amplitude (V)");
+      pulseAll[chName]->GetXaxis()->SetTitle("Time (s)");
     }
 
   for (cont = 0; cont<max; cont ++){
     ent = tree->GetEntryNumber(cont);
     tree->GetEntry(ent); 
-      for(int iii=0;iii<NHITS;iii++){
-        auto h = myHits[iii]->getHisto(iii);
-        pulseAll[iii]->Add(h);
+      
+      for(auto & [chName, hit] : myHits ){
+        auto h = hit->getHisto(chName);
+        pulseAll[chName]->Add(h);
         delete h;
       }
   }
 
-  for(int iii=0;iii<NHITS;iii++) {
-    pulseAll[iii]->Scale(1./max);
-    pulseAll[iii]->SetLineColor(colors[iii]);
-    if(iii==0){
-      pulseAll[iii]->SetStats(0);
-      pulseAll[iii]->GetYaxis()->SetLabelSize(.03);
-      pulseAll[iii]->GetXaxis()->SetLabelSize(.03);
-      if(NHITS>1)pulseAll[iii]->GetYaxis()->SetRangeUser(0,32768);
-      pulseAll[iii]->Draw();
+  int c=0;
+  for(auto & [chName, pulse] : pulseAll ) {
+    pulse->Scale(1./max);
+    pulse->SetLineColor(colors[c%4]);
+    if(c==0){
+      pulse->SetStats(0);
+      pulse->GetYaxis()->SetTitle("Amplitude (V)");
+      pulse->GetXaxis()->SetTitle("Time (s)");
+      pulse->Draw();
     } else {
-      pulseAll[iii]->Draw("SAME");
+      pulse->Draw("SAME");
     }
 
 	if(!fName.empty()){
-	  std::string name = "CH"+std::to_string(iii)+"_"+ fName;
-	  saveSpc(pulseAll[iii], name);
+	  std::string name = chName+"_"+ fName;
+	  saveSpc(pulse, name);
 	}
+    c++;
   }
 
 }

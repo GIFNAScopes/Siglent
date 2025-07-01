@@ -97,8 +97,8 @@ std::vector<double> Hit::GetSignalSmoothed(int neighbours) {
   return smoothed;
 }
  
-TH1F *Hit::getHisto( const int &ch ){
-    std::string hName = "C"+std::to_string(ch+1)+"_EV"+std::to_string(id);
+TH1F *Hit::getHisto(const std::string & ch ){
+    std::string hName = ch+"_EV"+std::to_string(id);
     auto h = new TH1F (hName.c_str(),hName.c_str(),Pulse.size(),0.,Pulse.size()*Interval);
         for(int p=0;p<Pulse.size();p++){
           double val = Pulse[p]*VDiv/CodePerDiv-Offset;
