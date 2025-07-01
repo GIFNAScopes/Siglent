@@ -369,7 +369,7 @@ if __name__ == "__main__":
             print(f"Acquired {base_name} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
             
             # Check if the events per file limit is reached
-            if nEvents_in_current_file >= config['eventsPerFile'] == 0:
+            if nEvents_in_current_file >= config['eventsPerFile']:
                 #print(f"Events per file limit ({config['eventsPerFile']}) reached for '{output_filename}'.")
                 current_n_files_suffix += 1
                 nEvents_in_current_file = 0
