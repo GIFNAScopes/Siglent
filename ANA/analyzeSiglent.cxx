@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sstream>
 #include <sys/stat.h>
+#include <deque>
 
 #include <TFile.h>
 #include <TTree.h>
@@ -31,6 +32,7 @@ std::map<std::string, double> read_preamble(std::ifstream &csv_file){
                 double val;
                 std::istringstream(value) >> val;
                 preamble[key] = val;
+                std::cout<<key<<" "<<val<<std::endl;
             }
         }
     }
@@ -38,71 +40,119 @@ std::map<std::string, double> read_preamble(std::ifstream &csv_file){
   return preamble;
 }
 
-std::map <std::string, std::vector<Short_t> > read_data(std::ifstream &csv_file, int nFrames, int nPoints){
-  std::map <std::string, std::vector<Short_t> > data;
+std::deque< std::pair<double, std::vector<Short_t> > > read_data(std::ifstream &csv_file, int nFrames, int nPoints){
+  std::deque< std::pair<double, std::vector<Short_t> > > data(nFrames);
   std::string line;
 
   for(int f=0;f<nFrames;f++){
     std::vector<Short_t> adc_data(nPoints);
     std::getline(csv_file, line);
-    std::string timeStamp;
-    std::stringstream ss(line);
-    std::getline(ss, timeStamp, ',');
     std::string val;
+    std::stringstream ss(line);
+    std::getline(ss, val, ',');
+    double timeStamp;
+    std::istringstream(val) >> timeStamp;
       for(int p=0;p<nPoints;p++){
         std::getline(ss, val, ',');
         if(p==0)val.erase(0,2);
         std::istringstream(val) >> adc_data[p];
       }
-    data[timeStamp] = adc_data;
+    data[f] = std::make_pair(timeStamp, adc_data);
   }
 
 return data;
+}
+
+std::vector<std::string> getChannels(std::ifstream &csv_file){
+
+  std::vector<std::string> channels;
+  
+  std::string line;
+  std::getline(csv_file, line);
+  std::stringstream ss(line);
+  std::string str;
+  std::getline(ss, str, ':');
+    if(str =="#CHANNELS"){
+      while (getline(ss, str, ','))
+        channels.push_back(str);
+    }
+  
+  return channels;
 }
 
 void csv2root (const std::string &fileName, const std::string &outFileName, int &eventID, double &deadTime){
 
     std::ifstream csv_file(fileName);
     if (!csv_file.is_open()) {
-        std::cerr << "? Error: No se pudo abrir el archivo CSV '" << fileName << "'" << std::endl;
+        std::cerr << "? Error: Cannot open file " << fileName << std::endl;
+        return;
+    }
+
+   std::cout << "Reading CSV file: '" << fileName << "'" << std::endl;
+
+   auto channels = getChannels(csv_file);
+   if(channels.empty()){
+        std::cerr << "? No channel found on file '" << fileName << std::endl;
         return;
     }
 
    auto fout = TFile::Open (outFileName.c_str(), "RECREATE");
-   TTree myTree ("tree", "Siglent data");
+   TTree tree ("tree", "Siglent data");
+   std::vector<Hit> myHits(channels.size());
 
-   Hit hit;
-   myTree.Branch("C1",&hit);//TODO make generic for all channels
+   std::cout<<"Channels: ";
+     for(const auto &chan : channels)
+        std::cout<<chan<<", ";
+   std::cout<<std::endl;
 
-    std::cout << "Leyendo archivo CSV: '" << fileName << "'" << std::endl;
+     for(int i=0;i<channels.size();i++){
+       tree.Branch(channels[i].c_str(), &myHits[i]);
+     }
+
     do {
-      auto preamble = read_preamble(csv_file);
-      int nFrames = preamble["sum_frame"];
-      int nPoints = preamble["one_frame_pts"];
-      hit.TDiv = preamble["tdiv"];
-      hit.VDiv = preamble["vdiv"];
-      hit.Offset = preamble["offset"];
-      hit.Delay = preamble["delay"];
-      hit.Interval = preamble["interval"];
-      hit.CodePerDiv = preamble["code"];
-      //hit.DeadTime += preamble["deadtime_us"]*1E6;
+      int nFrames=0;
+      int nPoints=0;
+      std::vector< std::deque< std::pair<double, std::vector<Short_t> > > > dataMap(channels.size());
+      for(int i=0;i<channels.size();i++){
+          auto preamble = read_preamble(csv_file);
+          nFrames = preamble["sum_frame"];
+          nPoints = preamble["one_frame_pts"];
+          myHits[i].TDiv = preamble["tdiv"];
+          myHits[i].VDiv = preamble["vdiv"];
+          myHits[i].Offset = preamble["offset"];
+          myHits[i].Delay = preamble["delay"];
+          myHits[i].Interval = preamble["interval"];
+          myHits[i].CodePerDiv = preamble["code"];
+          //myHits[i].DeadTime += preamble["deadtime_us"]*1E6;
+          dataMap[i] = read_data(csv_file, nFrames, nPoints);
+       }
 
-      auto data = read_data(csv_file, nFrames, nPoints);
+         for(int n=0;n<nFrames;n++){
+           for(int i=0;i<channels.size();i++){
+             const auto& [tmstp, adc] = dataMap[i].front();
+             myHits[i].id = eventID;
+             //myHits[i].TimeStamp = tmstp;
+             myHits[i].Pulse = adc;
+             myHits[i].analyzeHit();
+             dataMap[i].pop_front();
+             std::cout<<"Timestamp "<<channels[i]<< " "<<myHits[i].TimeStamp<<" "<<myHits[i].DeadTime*1E-6 <<" "<<myHits[i].Pulse[0]<<std::endl;
+            }
+           tree.Fill();
+           eventID++;
+         }
 
-      for(const auto& [tmpstp, adc] : data){
-        hit.id = eventID;
-        //hit.TimeStamp = tmpstp; //TBA when python return timestamp
-        hit.Pulse = adc;
-        hit.analyzeHit();
-        myTree.Fill();
-        eventID++;
-      }
     } while(csv_file.peek() != EOF);
 
   std::cout<<"Done "<<eventID<<" event processed"<<std::endl;
-  
+  std::cout << "\nTotal entries filled into tree (before Write): " << tree.GetEntries() << std::endl;
+  tree.Print();
+  tree.Scan();
+
   fout->Write();
   fout->Close();
+  
+  delete fout;
+  csv_file.close();
 }
 
 
