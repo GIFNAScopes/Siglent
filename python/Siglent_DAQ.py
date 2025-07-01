@@ -220,7 +220,7 @@ def save_acquisition_data_to_csv(all_channels_data: dict, deadtime_s: float = 0.
     if nEvents_in_current_file == 0:
         acquisition_channels = list(all_channels_data.keys())
         with open(output_filename, 'w', newline='') as f:
-            f.write(f"# Channels acquired in this file: {', '.join(acquisition_channels)}\n")
+            f.write(f"#CHANNELS: {', '.join(acquisition_channels)}\n")
 
     for channel_name, data in all_channels_data.items():
         if df_preamble.empty or df_frames.empty:
