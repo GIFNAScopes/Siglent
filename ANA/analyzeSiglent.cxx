@@ -105,6 +105,8 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
      for(int i=0;i<channels.size();i++)
        tree.Branch(channels[i].c_str(), &myHits[i]);
 
+int c=0;
+
     do {
       int nFrames=0;
       int nPoints=0;

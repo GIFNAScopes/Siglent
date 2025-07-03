@@ -64,9 +64,11 @@ def get_enabled_channels(sds) -> list:
     # Assuming channels C1 to C4 are the only possible channels to check
     for i in range(1, 5): # Checks C1, C2, C3, C4
         channel_name = f"C{i}"
-        status = sds.query(f":CHAN{i}:STAT?").strip()
-            if status == "ON":
-                enabled_channels.append(channel_name)
+        status = sds.query(f":CHAN{i}:SWIT?").strip()
+        #print(f"CHAN{i} {status}")
+        if status == "ON":
+            enabled_channels.append(channel_name)
+            sds.write(f":CHAN{i}:STAT ON")
 
     return enabled_channels
 
@@ -75,6 +77,8 @@ def setup_scope_for_sequence(sds, channels=["C1"], seq_count=5):
     sds.write(":STOP")  # Stop current acquisition
     sds.write("*CLS")  # Clean errors
 
+    mdepth = sds.query(':ACQuire:MDepth?')
+    print(f"MDepth: {mdepth.strip()}")
     #for channel in channels:
     #    ch_num = channel[-1]
     #    sds.write(f":CHAN{ch_num}:STAT ON")
@@ -86,6 +90,7 @@ def setup_scope_for_sequence(sds, channels=["C1"], seq_count=5):
     print(f"✅ Osciloscope ready for sequence...")
 
 def wait_for_trigger(sds):
+
     while True:
         status = sds.query(":TRIG:STAT?").strip()
         if status == "Stop":
@@ -169,6 +174,7 @@ def read_sequence_raw_frames(sds, channel):
     # This list will store dictionaries, each representing a frame with its ADC data and its timestamp.
     all_frames_data = []
 
+    #print (f"Frames {total_frames} {read_frame}")
     read_times = math.ceil(total_frames/read_frame)
 
     for i in range(0,read_times):
@@ -223,36 +229,35 @@ def save_acquisition_data_to_csv(all_channels_data: dict, deadtime_s: float = 0.
             f.write(f"#CHANNELS: {', '.join(acquisition_channels)}\n")
 
     for channel_name, data in all_channels_data.items():
-        if df_preamble.empty or df_frames.empty:
+        if df_global_preamble.empty or df_captured_frames.empty:
             print(f"Dataframe or preamble empty, not saved on {filename}")
             return
 
-        df_preamble['deadtime_us'] = deadtime_s * 1_000_000 # Store in us for convenience
+        df_global_preamble['deadtime_us'] = deadtime_s * 1_000_000 # Store in us for convenience
 
         with open(filename, 'a', newline='') as f:
-            df_preamble.to_csv(f, index=True, header=True, mode="a")
+            df_global_preamble.to_csv(f, index=True, header=True, mode="a")
 
         with open(filename, 'a', newline='') as f:
-            df_frames.to_csv(f, index=False, header=True, mode="a")
+            df_captured_frames.to_csv(f, index=False, header=True, mode="a")
 
 def find_next_available_filename(base_filename: str) -> int:
     """
     Finds the next available filename based on a base name, an incrementing
     file number, and a fixed 'n_files' suffix.
     """
-    file_number = 0  # Will be incremented before first use
-    n_files_suffix = 0
+    file_number = 1  # Will be incremented before first use
+    n_files_suffix = 1
 
     while True:
         # Format the filename using f-strings for clear and concise formatting
         # %04d for file_number (e.g., 0000, 0001, ...)
         # %02d for n_files_suffix (e.g., 01, 02, ...)
         output_filename = f"{base_filename}{file_number:04d}.csv.{n_files_suffix:02d}"
-        file_number += 1  # Increment file number
-
         # Check if the file exists. os.path.exists() is the Python equivalent of stat() == 0
         if not os.path.exists(output_filename):
             break  # File does not exist, so this is our target filename
+        file_number += 1  # Increment file number
 
     return file_number
 
@@ -326,20 +331,26 @@ if __name__ == "__main__":
 
         # Get initial file number and suffix components
         file_number = find_next_available_filename(base_name)
-        n_files_suffix = 0
-        output_filename = f"{base_name}{file_number:04d}.csv.{n_files_suffix:02d}"
+        current_n_files_suffix = 1
+        output_filename = f"{base_name}{file_number:04d}.csv.{current_n_files_suffix:02d}"
         sds = connect_to_scope(address=config['address'])
         # Check enabled channels
         CHANNELS = get_enabled_channels(sds)
         # Configure for nFrames
         setup_scope_for_sequence(sds, channels=CHANNELS, seq_count=config['nFrames'])
+        time.sleep(1)
 
         while running:
             sds.write(":TRIG:RUN") # Re-arm trigger for continuous acquisition
             # Wait for acquisition to be completed
             wait_for_trigger(sds)
+
             # --- Time counter for read_sequence_raw_frames (Deadtime check) ---
             start_time_read_frames = time.perf_counter()
+
+            if save_thread and save_thread.is_alive(): 
+                print("Waiting save thread to finish...")
+                save_thread.join()
             
             all_channels_data = {}
             for channel in CHANNELS:
@@ -348,11 +359,7 @@ if __name__ == "__main__":
                     "frames": df_captured_frames,
                     "preamble": df_global_preamble
                 }
-
-            if save_thread and save_thread.is_alive(): 
-                print("Waiting save thread to finish...")
-                save_thread.join()
-
+                nFrames = df_global_preamble["sum_frame"]
             end_time_read_frames = time.perf_counter()
             deadtime_s = end_time_read_frames - start_time_read_frames
             
@@ -364,8 +371,8 @@ if __name__ == "__main__":
             )
             save_thread.start() # Start the thread
             
-            nEvents_in_current_file += config['nFrames']
-            total_events += config['nFrames']
+            nEvents_in_current_file += nFrames
+            total_events += nFrames
             print(f"Acquired {base_name} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
             
             # Check if the events per file limit is reached
