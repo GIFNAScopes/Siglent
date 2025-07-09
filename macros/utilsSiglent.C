@@ -11,6 +11,7 @@ TChain * tree=nullptr;
 std::map<std::string, Hit *> myHits;
 std::map<std::string, TH1F *> pulseAll;
 std::map<std::string, TH1F *> histos;
+THStack *hs = nullptr;
 
 ///////////////////////////////////////////////////
 // Read spectrum from ascii file and store it in h
@@ -146,36 +147,37 @@ void drawPulse(int p){
   tree->SetEventList(list);
 
   int ent = tree->GetEntryNumber(p);
-  cout<<"Drawing entry" << ent << endl;
+  cout<<"Drawing entry " << ent << endl;
 
   if(ent<0 || ent>= tree->GetEntries()){
     std::cout<<"Entry "<<p <<" out of range 0-"<<tree->GetEntries()-1<<std::endl;
     return;
   }
 
-   for(auto &[chName, h] : histos)
-     delete h;
+  for(auto &[chName, h] : histos)
+    delete h;
 
   histos.clear();
 
   tree->GetEntry(ent); 
 
+  if(hs)delete hs;
+  hs = new THStack("Pulses","");
+
   int c=0;
   for(auto & [chName, hit] : myHits ){
       histos[chName] = (TH1F *)(hit->getHisto(chName));
       histos[chName]->SetLineColor(colors[c%4]);
-	if(c==0){
-  	  histos[chName]->SetStats(0);
-	  histos[chName]->GetYaxis()->SetTitle("Amplitude (V)");
-	  histos[chName]->GetXaxis()->SetTitle("Time (s)");
-	  //histos[chName]->GetYaxis()->SetRangeUser(0,32768);
-	  histos[chName]->Draw();
-	} else {
-	  histos[chName]->Draw("SAME");
-	}
+      histos[chName]->SetMarkerColor(colors[c%4]);
+      hs->Add(histos[chName],chName.c_str());
       c++;
   }
 
+  hs->Draw("nostack,lp");
+  hs->GetYaxis()->SetTitle("Amplitude (V)");
+  hs->GetXaxis()->SetTitle("Time (s)");
+
+  gPad->BuildLegend(0.75,0.75,0.95,0.95,"");
 }
 
 /////////////////////////////////////////////////////////
@@ -185,15 +187,15 @@ void drawPulse(int p){
 void drawAllPulses(std::string fName ="")
 {
 
- for(auto &[histoName, h] : histos)
+  for(auto &[chName, h] : histos)
     delete h;
 
- histos.clear();
+  histos.clear();
 
- for(auto &[pName, p] : pulseAll)
-   delete p;
+  for(auto &[pName, p] : pulseAll)
+    delete p;
 
- pulseAll.clear();
+  pulseAll.clear();
 
   TEventList * list = (TEventList*)(gDirectory->Get("list"));
   tree->SetEventList(list);
@@ -220,19 +222,15 @@ void drawAllPulses(std::string fName ="")
       }
   }
 
+  if(hs)delete hs;
+  hs = new THStack("All pulses","");
+
   int c=0;
   for(auto & [chName, pulse] : pulseAll ) {
     pulse->Scale(1./max);
     pulse->SetLineColor(colors[c%4]);
-    if(c==0){
-      pulse->SetStats(0);
-      pulse->GetYaxis()->SetTitle("Amplitude (V)");
-      pulse->GetXaxis()->SetTitle("Time (s)");
-      pulse->Draw();
-    } else {
-      pulse->Draw("SAME");
-    }
-
+    pulse->SetMarkerColor(colors[c%4]);
+    hs->Add(pulse,chName.c_str());
 	if(!fName.empty()){
 	  std::string name = chName+"_"+ fName;
 	  saveSpc(pulse, name);
@@ -240,5 +238,10 @@ void drawAllPulses(std::string fName ="")
     c++;
   }
 
+  hs->Draw("nostack,lp");
+  hs->GetYaxis()->SetTitle("Amplitude (V)");
+  hs->GetXaxis()->SetTitle("Time (s)");
+
+  gPad->BuildLegend(0.75,0.75,0.95,0.95,"");
 }
 
