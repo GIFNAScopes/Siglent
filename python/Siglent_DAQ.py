@@ -16,7 +16,6 @@ import struct
 import os
 import time
 import math
-import os
 import pandas as pd
 import datetime
 import gc
@@ -47,13 +46,15 @@ def signal_handler(sig, frame):
 def connect_to_scope(address="TCPIP0::192.168.0.102::INSTR"):
     rm = pyvisa.ResourceManager()
     sds = rm.open_resource(f"{address}")
-    sds.timeout = 20000  # 20 seconds
+    sds.timeout = 5000  # 5 seconds
     sds.chunk_size = 20 * 1024 * 1024  # 20 MB
     idn = sds.query('*IDN?')
     print(f"IDN: {idn.strip()}")
     sds.clear() # Clean buffers
+    print("Buffers cleaned")
 
     return sds
+
 
 def get_enabled_channels(sds) -> list:
     """
@@ -64,30 +65,29 @@ def get_enabled_channels(sds) -> list:
     # Assuming channels C1 to C4 are the only possible channels to check
     for i in range(1, 5): # Checks C1, C2, C3, C4
         channel_name = f"C{i}"
+        #status = sds.query(f":CHAN{i}:STAT?").strip()
         status = sds.query(f":CHAN{i}:SWIT?").strip()
         #print(f"CHAN{i} {status}")
         if status == "ON":
             enabled_channels.append(channel_name)
-            sds.write(f":CHAN{i}:STAT ON")
+            #sds.write(f":CHAN{i}:STAT ON")
 
     return enabled_channels
 
-def setup_scope_for_sequence(sds, channels=["C1"], seq_count=5):
-    print("⚙️ Configurando osciloscopio...")
+
+def setup_scope_for_sequence(sds, channels: list, seq_count: int):
+    print("⚙️ Configuring oscilloscope...")
     sds.write(":STOP")  # Stop current acquisition
     sds.write("*CLS")  # Clean errors
-
-    mdepth = sds.query(':ACQuire:MDepth?')
-    print(f"MDepth: {mdepth.strip()}")
-    #for channel in channels:
-    #    ch_num = channel[-1]
-    #    sds.write(f":CHAN{ch_num}:STAT ON")
+    sds.write("MEACL") # Clear measurements
 
     sds.write(":ACQ:MODE SEQ")
+    sds.write(":ACQ:SEQ ON")
     sds.write(f":ACQ:SEQ:COUN {seq_count}")
     sds.write(":TRIG:MODE SING")
 
     print(f"✅ Osciloscope ready for sequence...")
+
 
 def wait_for_trigger(sds):
 
@@ -97,6 +97,7 @@ def wait_for_trigger(sds):
             #print("🎯 Adquisition completed.")
             break
         time.sleep(0.05)
+
 
 def get_preamble(sds, channel):
     sds.write(f":WAV:SOUR {channel}")
@@ -116,9 +117,7 @@ def get_preamble(sds, channel):
     adc_bit = struct.unpack('h', preamble[0xAC:0xAE])[0]
     one_frame_pts = struct.unpack('i', preamble[0x74:0x78])[0]
     sum_frame = struct.unpack('i', preamble[0x94:0x98])[0]
-    read_frame = struct.unpack('i',preamble[0x90:0x93+1])[0]
-    
-    tmstp = preamble[346:]
+    read_frame = struct.unpack('i',preamble[0x90:0x94])[0]
     
     preamble_data = {
         "interval": interval, "delay": delay, "tdiv": tdiv, "vdiv": vdiv,
@@ -126,8 +125,7 @@ def get_preamble(sds, channel):
         "one_frame_pts": one_frame_pts, "sum_frame": sum_frame,
         "read_frame": read_frame, "channel":channel
     }
-    return pd.Series(preamble_data), tmstp 
-
+    return pd.Series(preamble_data)
 
 
 def main_time_stamp_deal(time):
@@ -163,14 +161,13 @@ def read_sequence_raw_frames(sds, channel):
     sds.write(":WAV:POIN 0")
     sds.write(":WAV:WIDT BYTE")  # 8-bit
     sds.write(":WAVeform:SEQUence 0,0")
-    
-    
-    df_preamble, tmstp = get_preamble(sds, channel=channel)
+
+    df_preamble = get_preamble(sds, channel=channel)
     one_frame_pts = df_preamble["one_frame_pts"]
     total_frames = df_preamble["sum_frame"]
     read_frame= df_preamble["read_frame"] # Max frames oscilloscope can send in one WAV:DATA? response
     adc_bit = df_preamble["adc_bit"]
-    #print(f"TMstp: {tmstp}")
+
     # This list will store dictionaries, each representing a frame with its ADC data and its timestamp.
     all_frames_data = []
 
@@ -179,12 +176,18 @@ def read_sequence_raw_frames(sds, channel):
 
     for i in range(0,read_times):
         sds.write(":WAVeform:SEQUence {},{}".format(0,read_frame*i+1)) #First sequence acquisition
+
         if i+1 == read_times:     #frame num of last read time
             read_frame = total_frames -(read_times-1)*read_frame
-        
+
+        sds.write(":WAV:PRE?")
+        pre = sds.read_raw()
+        preamble = pre[pre.find(b'#') + 11:]
+        tmstp = preamble[346:]
+
         if adc_bit > 8:
             sds.write(":WAVeform:WIDTh WORD")
-        sds.write(":WAVeform:DATA?")        #get data for each sequence acquisition
+        sds.write(":WAVeform:DATA?")  #get data for each sequence acquisition
         raw = sds.read_raw().rstrip()
         #print(f"{raw}")
         block_start = raw.find(b'#')
@@ -212,7 +215,7 @@ def read_sequence_raw_frames(sds, channel):
 
     del data
     gc.collect()
-                
+
     df_all_frames = pd.DataFrame(all_frames_data)
 
     return df_all_frames, df_preamble
@@ -228,23 +231,25 @@ def save_acquisition_data_to_csv(all_channels_data: dict, deadtime_s: float = 0.
         with open(output_filename, 'w', newline='') as f:
             f.write(f"#CHANNELS: {', '.join(acquisition_channels)}\n")
 
-    for channel_name, data in all_channels_data.items():
-        if df_global_preamble.empty or df_captured_frames.empty:
-            print(f"Dataframe or preamble empty, not saved on {filename}")
-            return
+    for channel_name, data_info in all_channels_data.items():
+        df_captured_frames = data_info["frames"]
+        df_channel_preamble = data_info["preamble"]
 
-        df_global_preamble['deadtime_us'] = deadtime_s * 1_000_000 # Store in us for convenience
+        if df_channel_preamble.empty or df_captured_frames.empty:
+            print(f"Warning: Dataframe or preamble empty for channel {channel_name}, skipping save to {filename}")
+            continue
+
+        df_channel_preamble['deadtime_us'] = deadtime_s * 1_000_000 # Store in us for convenience
 
         with open(filename, 'a', newline='') as f:
-            df_global_preamble.to_csv(f, index=True, header=True, mode="a")
-
-        with open(filename, 'a', newline='') as f:
+            df_channel_preamble.to_csv(f, index=True, header=True, mode="a")
             df_captured_frames.to_csv(f, index=False, header=True, mode="a")
+
 
 def find_next_available_filename(base_filename: str) -> int:
     """
     Finds the next available filename based on a base name, an incrementing
-    file number, and a fixed 'n_files' suffix.
+    file number
     """
     file_number = 1  # Will be incremented before first use
     n_files_suffix = 1
@@ -335,17 +340,17 @@ if __name__ == "__main__":
         output_filename = f"{base_name}{file_number:04d}.csv.{current_n_files_suffix:02d}"
         sds = connect_to_scope(address=config['address'])
         # Check enabled channels
-        CHANNELS = get_enabled_channels(sds)
+        enabled_channels = get_enabled_channels(sds)
         # Configure for nFrames
-        setup_scope_for_sequence(sds, channels=CHANNELS, seq_count=config['nFrames'])
+        setup_scope_for_sequence(sds, channels=enabled_channels, seq_count=config['nFrames'])
         time.sleep(1)
+        start_time_read_frames = time.perf_counter()
 
         while running:
             sds.write(":TRIG:RUN") # Re-arm trigger for continuous acquisition
             # Wait for acquisition to be completed
             wait_for_trigger(sds)
 
-            # --- Time counter for read_sequence_raw_frames (Deadtime check) ---
             start_time_read_frames = time.perf_counter()
 
             if save_thread and save_thread.is_alive(): 
@@ -353,8 +358,8 @@ if __name__ == "__main__":
                 save_thread.join()
             
             all_channels_data = {}
-            for channel in CHANNELS:
-                df_captured_frames, df_global_preamble = read_sequence_raw_frames(sds, channel=channel)
+            for channel in enabled_channels:
+                df_captured_frames, df_global_preamble = read_sequence_raw_frames(sds, channel)
                 all_channels_data[channel] = {
                     "frames": df_captured_frames,
                     "preamble": df_global_preamble
@@ -370,11 +375,11 @@ if __name__ == "__main__":
                 args=(all_channels_data.copy(), deadtime_s, nEvents_in_current_file, output_filename)
             )
             save_thread.start() # Start the thread
-            
+
             nEvents_in_current_file += nFrames
             total_events += nFrames
-            print(f"Acquired {base_name} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
-            
+            print(f"Acquired {nFrames} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
+
             # Check if the events per file limit is reached
             if nEvents_in_current_file >= config['eventsPerFile']:
                 #print(f"Events per file limit ({config['eventsPerFile']}) reached for '{output_filename}'.")
@@ -395,11 +400,11 @@ if __name__ == "__main__":
         print(f"❌ VISA ERROR: {e}")
         print("Make sure that the oscilloscope address is correct, scope is connected and SCPI is enabled.")
     except FileNotFoundError as e:
-        print(f"❌ Config YAML error: {e}. Make sure that {pargs.events} exist.")
+        print(f"❌ Config YAML error: {e}. Make sure that {pargs.config} exist.")
     except ValueError as e:
-        print(f"❌ Config YAML error: {e}. Check fileds in {pargs.events}.")
+        print(f"❌ Config YAML error: {e}. Check fileds in {pargs.config}.")
     except yaml.YAMLError as e:
-        print(f"❌ Error parsing YAML: {e}. Check sintax in {pargs.events}.")
+        print(f"❌ Error parsing YAML: {e}. Check sintax in {pargs.config}.")
     except Exception as e:
         print(f"❌ Unkown error: {e}")
         import traceback
@@ -407,6 +412,7 @@ if __name__ == "__main__":
     finally:
         if sds:
             sds.write(":STOP")
+            sds.write(":ACQ:SEQ OFF")
             sds.close()
             print("🔌 Conection to scope closed.")
         # Ensure the saving thread completes before the program truly exits
