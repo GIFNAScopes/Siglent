@@ -30,7 +30,15 @@ jobs:
       run: |
         cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
         cmake --build build
-      shell: bash
-    
-
+        cmake --install build
+    - name: Source
+      run: |
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
+        cmake --build build
+        cmake --install build
+    - name: Source
+      run: |
+          printenv
+          source install/thisSiglent.sh
+          SigRoot -b -q
     
