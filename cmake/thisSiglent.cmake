@@ -15,6 +15,19 @@ else
     return 1
 fi
 
+# We identify the thisroot.sh script for the corresponding ROOT version
+execute_process(
+    COMMAND root-config --prefix
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE ROOT_PATH)
+string(REGEX REPLACE "\n$" "" ROOT_PATH "${ROOT_PATH}")
+set(thisROOT "${ROOT_PATH}/bin/thisroot.sh")
+
+\# if thisroot.sh script is found we load the same ROOT version as used in compilation
+if [[ -f \\\"${thisROOT}\\\" ]]; then
+    source ${thisROOT}
+fi
+
 if [ \\\$SIG_PATH ] ; then
 echo switching to SIG installed in \\\${thisdir}
 _PATH=`echo \\\$PATH | sed -e \\\"s\#\\\${SIG_PATH}/bin:\#\#g\\\"`
