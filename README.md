@@ -29,7 +29,7 @@ source ../install/thisSiglent.sh
 
 ## Getting started:
 
-Make sure that the oscilloscope is reachable and in the same network Make sure that the config file (aka `siglent.cfg`) contains the proper oscilloscope address `TCPIP0::192.168.0.102::INSTR` in the template config.
+Make sure that the oscilloscope is reachable and in the same network Make sure that the config file (aka `siglent.cfg`) contains the proper oscilloscope address `TCPIP0::192.168.0.102::INSTR` in the template config. Make sure that all the measurements on the oscilloscope are switched OFF, any active measurements may reduce the available memory of the oscilloscope, which can cause that the query returns a low number of frames.
 
 Usefull commands:
 * Start DAQ with the oscillosope `Siglent_DAQ.py` note that you have to provide a config file, please copy it in your working folder, a template is available under install/config.
@@ -37,7 +37,7 @@ Usefull commands:
 * Analyze data from binary file `analyzeSiglent --f TFIIIxxx.csv`
 * Decode binary file and load it in SigRoot `processdata TFIII0000.csv`
 
-TDSRoot (load root, TDS libraries and macros ):
+SigRoot (load root, TDS libraries and macros ):
 * Load root files (analyzed files) `readData("TFIIIxxx.raw")`
 * Draw amplitude (int) vs area `tree->Draw("C1.DC:C1.Area")`
 * Histogram with a given bin size and limits `tree->Draw("C1.Area>>h(1000,0,100000)")`
