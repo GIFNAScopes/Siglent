@@ -1,0 +1,36 @@
+name: Validation
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "master" branch
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  release:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  compilation:
+    name: Build and install
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/lobis/root-geant4-garfield:rest-for-physics
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Action to checkout your repository code
+    - name: Compile
+      run: |
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
+        cmake --build build
+      shell: bash
+    
+
+    
