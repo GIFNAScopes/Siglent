@@ -35,5 +35,5 @@ jobs:
         cmake --install build
         source ${{ env.INSTALL_PATH }}/thisSiglent.sh
         SigRoot -b -q
-        processdata test/TestVal0001.csv.01
+        bash ${{ env.INSTALL_PATH }}/scripts/processdata.sh test/TestVal0001.csv.01
     
