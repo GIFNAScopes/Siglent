@@ -16,7 +16,9 @@ concurrency:
 defaults:
   run:
     shell: bash
-
+env:
+  INSTALL_PATH: /siglent/install
+  
 jobs:
   compilation:
     name: Build and install
@@ -28,10 +30,9 @@ jobs:
       uses: actions/checkout@v4 # Action to checkout your repository code
     - name: Compile and test
       run: |
-        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
+        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PATH }}
         cmake --build build
         cmake --install build
-        printenv
-        source install/thisSiglent.sh
+        source ${{ env.INSTALL_PATH }}/thisSiglent.sh
         SigRoot -b -q
     
