@@ -26,19 +26,12 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4 # Action to checkout your repository code
-    - name: Compile
+    - name: Compile and test
       run: |
         cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
         cmake --build build
         cmake --install build
-    - name: Source
-      run: |
-        cmake -S . -B build -DCMAKE_INSTALL_PREFIX=install/
-        cmake --build build
-        cmake --install build
-    - name: Source
-      run: |
-          printenv
-          source install/thisSiglent.sh
-          SigRoot -b -q
+        printenv
+        source install/thisSiglent.sh
+        SigRoot -b -q
     
