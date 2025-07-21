@@ -1,5 +1,12 @@
 # Write thisSiglent.sh to INSTALL directory
 
+# We identify the thisroot.sh script for the corresponding ROOT version
+execute_process(
+    COMMAND root-config --prefix
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE ROOT_PATH)
+string(REGEX REPLACE "\n$" "" ROOT_PATH "${ROOT_PATH}")
+set(thisROOT "${ROOT_PATH}/bin/thisroot.sh")
 
 # install thisREST script, sh VERSION
 install( CODE
@@ -13,6 +20,11 @@ if [[ -n \\\"\\\${BASH_VERSION}\\\" ]] ; then
 else
     echo \\\"Invalid shell! Only bash is supported!\\\"
     return 1
+fi
+
+\# if thisroot.sh script is found we load the same ROOT version as used in compilation
+if [[ -f \\\"${thisROOT}\\\" ]]; then
+    source ${thisROOT}
 fi
 
 if [ \\\$SIG_PATH ] ; then
