@@ -188,7 +188,7 @@ def read_sequence_raw_frames(sds, channel):
         if adc_bit > 8:
             sds.write(":WAVeform:WIDTh WORD")
         sds.write(":WAVeform:DATA?")  #get data for each sequence acquisition
-        raw = sds.read_raw().rstrip()
+        raw = sds.read_raw()#.rstrip()
         #print(f"{raw}")
         block_start = raw.find(b'#')
         data_digit = int(raw[block_start + 1:block_start+2])
