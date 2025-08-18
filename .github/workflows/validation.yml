@@ -27,7 +27,7 @@ jobs:
       image: ghcr.io/lobis/root-geant4-garfield:rest-for-physics
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # Action to checkout your repository code
+      uses: actions/checkout@v5 # Action to checkout your repository code
     - name: Compile and test
       run: |
         cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_PATH }}
