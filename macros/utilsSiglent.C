@@ -111,7 +111,7 @@ void readData(const std::string &fileName)
   for(auto & [brName, hit] : myHits ){
     tree->SetBranchAddress(brName.c_str(), &hit);
     tree->GetEntry(0);
-    std::cout<<brName<< " "<<  hit->TDiv<<" V/Div "<<std::endl;
+    std::cout<<brName<< " "<<  hit->VDiv<<" V/Div "<<std::endl;
       if(c==0){
         std::cout << "Sampling Rate: " << hit->Interval*1E9 << " ns/pt"<< std::endl;
         std::cout << "Pulse Size: " << hit->Pulse.size() << " points"<<std::endl;
