@@ -346,7 +346,9 @@ if __name__ == "__main__":
         # Configure for nFrames
         setup_scope_for_sequence(sds, channels=enabled_channels, seq_count=config['nFrames'])
         time.sleep(1)
-        start_time_read_frames = time.perf_counter()
+        cumulative_deadtime = 0.0
+        start_time_read_frames = 0.0
+        start_acquisition_clock = time.perf_counter()
 
         while running:
             sds.write(":TRIG:RUN") # Re-arm trigger for continuous acquisition
@@ -369,6 +371,7 @@ if __name__ == "__main__":
                 nFrames = df_global_preamble["sum_frame"]
             end_time_read_frames = time.perf_counter()
             deadtime_s = end_time_read_frames - start_time_read_frames
+            cumulative_deadtime += deadtime_s
             
             # Start saving data in a separate thread
             # Use .copy() to ensure dataframes are not modified by the main thread after being passed
@@ -397,6 +400,9 @@ if __name__ == "__main__":
                 break # Exit the while loop
 
         print("🎯 Adquisition completed.")
+        elapsed_total = time.perf_counter() - start_acquisition_clock
+        live_time = elapsed_total - cumulative_deadtime
+        print(f"Elapsed time: {elapsed_total:.2f}s | DeadTime: {cumulative_deadtime:.2f}s | Live Time: {live_time:.2f}s")
 
     except pyvisa.errors.VisaIOError as e:
         print(f"❌ VISA ERROR: {e}")
