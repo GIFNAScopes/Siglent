@@ -108,6 +108,7 @@ void readData(const std::string &fileName)
   std::cout<<"Number of channels "<<myHits.size()<<std::endl;
 
   int c=0;
+  double DTfirstEvent = 0.;
   for(auto & [brName, hit] : myHits ){
     tree->SetBranchAddress(brName.c_str(), &hit);
     tree->GetEntry(0);
@@ -120,14 +121,15 @@ void readData(const std::string &fileName)
 
         std::cout << "N Entries: " << entries << std::endl;
         double runStart = hit->TimeStamp;
+        if(hit->id !=0)DTfirstEvent = hit->DeadTime*1E-6;
 
         tree->GetEntry(entries-1);
         double runEnd = hit->TimeStamp;
-        double deadTime = hit->DeadTime*1E-6;
+        double deadTime = hit->DeadTime*1E-6 - DTfirstEvent;
 
         std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
         std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
-        std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
+        std::cout << "Dead Time: " << deadTime <<" seconds" <<<< std::endl;
         tree->GetEntry(0);
         c++;
       }
