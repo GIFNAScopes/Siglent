@@ -14,9 +14,9 @@ Hit::~Hit(){
 void Hit::analyzeHit( ){
 
   auto smoothed = GetSignalSmoothed();
-  int nPointsB = Delay/Interval/2; //Baseline
+  int nPointsB = (Pulse.size()/2. - Delay/Interval)/2.; //Baseline
 
-  //std::cout<<"Pulse size "<<smoothed.size()<<" Points baseline "<<nPointsB<<" Pretrigger "<<Pretrigger<<std::endl;
+  //if(id<10)std::cout<<"Pulse size "<<Pulse.size()<<" Delay "<<Delay<<" Interval "<<Interval<<" "<<Pulse.size()*Interval<<" Points baseline "<<nPointsB<<std::endl;
 
   double baseLine = 0, baseLineSigma = 0;
   for (int p = 0; p < nPointsB; p++) {
