@@ -80,6 +80,7 @@ def setup_scope_for_sequence(sds, channels: list, seq_count: int):
     sds.write(":STOP")  # Stop current acquisition
     sds.write("*CLS")  # Clean errors
     sds.write("MEACL") # Clear measurements
+    sds.write(":SYSTem:REMote ON")
 
     sds.write(":ACQ:MODE SEQ")
     sds.write(":ACQ:SEQ ON")
@@ -145,6 +146,7 @@ def main_time_stamp_deal(time):
     days = int.from_bytes(days, byteorder='big', signed=False)
     hours = int.from_bytes(hours, byteorder='big', signed=False)
     minutes = int.from_bytes(minutes, byteorder='big', signed=False)
+    #print("{}/{}/{},{}:{}:{}".format(year,months,days,hours,minutes,seconds))
     try:
         base_time = datetime.datetime(year, months, days, hours, minutes)
         full_time = base_time + datetime.timedelta(seconds=seconds)
@@ -413,6 +415,7 @@ if __name__ == "__main__":
         if sds:
             sds.write(":STOP")
             sds.write(":ACQ:SEQ OFF")
+            sds.write(":SYSTem:REMote OFF")
             sds.close()
             print("🔌 Conection to scope closed.")
         # Ensure the saving thread completes before the program truly exits
