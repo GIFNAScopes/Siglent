@@ -40,25 +40,34 @@ std::map<std::string, double> read_preamble(std::ifstream &csv_file){
   return preamble;
 }
 
-std::deque< std::pair<double, std::vector<Short_t> > > read_data(std::ifstream &csv_file, int nFrames, int nPoints){
-  std::deque< std::pair<double, std::vector<Short_t> > > data(nFrames);
+std::vector< std::pair<double, std::vector<Short_t> > > read_data(std::ifstream &csv_file, int nFrames, int nPoints){
+  std::vector< std::pair<double, std::vector<Short_t> > > data(nFrames);
   std::string line;
+  line.reserve(nPoints * 10);
 
-  for(int f=0;f<nFrames;f++){
-    std::vector<Short_t> adc_data(nPoints);
-    std::getline(csv_file, line);
-    std::string val;
-    std::stringstream ss(line);
-    std::getline(ss, val, ',');
-    double timeStamp;
-    std::istringstream(val) >> timeStamp;
-      for(int p=0;p<nPoints;p++){
-        std::getline(ss, val, ',');
-        if(p==0)val.erase(0,2);
-        std::istringstream(val) >> adc_data[p];
-      }
-    data[f] = std::make_pair(timeStamp, adc_data);
-  }
+     for (int f = 0; f < nFrames; f++) {
+        if (!std::getline(csv_file, line)) break;
+        const char* ptr = line.c_str();
+        char* next_ptr;
+
+        double timeStamp = std::strtod(ptr, &next_ptr);
+        if (ptr == next_ptr) continue; // Error de lectura
+        ptr = next_ptr;
+        if (*ptr == ',') ptr++;
+        std::vector<Short_t> adc_data(nPoints);
+
+        for (int p = 0; p < nPoints; p++) {
+            if (p == 0) {
+                while (*ptr && (*ptr == ' ' || *ptr == '[' || *ptr == '(' || *ptr == '"')) {
+                    ptr++;
+                }
+            }
+            adc_data[p] = static_cast<Short_t>(std::strtol(ptr, &next_ptr, 10));
+            ptr = next_ptr;
+            if (*ptr == ',') ptr++;
+        }
+        data[f] = std::make_pair(timeStamp, std::move(adc_data));
+    }
 
 return data;
 }
@@ -110,35 +119,38 @@ int c=0;
     do {
       int nFrames=0;
       int nPoints=0;
-      std::vector< std::deque< std::pair<double, std::vector<Short_t> > > > dataMap(channels.size());
+      std::vector< std::vector< std::pair<double, std::vector<Short_t> > > > dataMap(channels.size());
       for(int i=0;i<channels.size();i++){
           auto preamble = read_preamble(csv_file);
           nFrames = preamble["sum_frame"];
           nPoints = preamble["one_frame_pts"];
-          myHits[i].TDiv = preamble["tdiv"];
-          myHits[i].VDiv = preamble["vdiv"];
-          myHits[i].Offset = preamble["offset"];
-          myHits[i].Delay = preamble["delay"];
-          myHits[i].Interval = preamble["interval"];
-          myHits[i].CodePerDiv = preamble["code"];
-          if(i==0)deadTime += preamble["deadtime_us"];
-          myHits[i].DeadTime = deadTime;
+          auto& hit = myHits[i];
+          hit.TDiv     = preamble["tdiv"];
+          hit.VDiv     = preamble["vdiv"];
+          hit.Offset   = preamble["offset"];
+          hit.Delay    = preamble["delay"];
+          hit.Interval = preamble["interval"];
+          hit.CodePerDiv = preamble["code"];
+        
+          if (i == 0) deadTime += preamble["deadtime_us"];
+          hit.DeadTime = deadTime;
+          dataMap[i].reserve(nFrames); 
           dataMap[i] = read_data(csv_file, nFrames, nPoints);
        }
 
          for(int n=0;n<nFrames;n++){
            for(int i=0;i<channels.size();i++){
-             const auto& [tmstp, adc] = dataMap[i].front();
-             myHits[i].id = eventID;
-             myHits[i].TimeStamp = tmstp;
-             myHits[i].Pulse = adc;
-             myHits[i].analyzeHit();
-             dataMap[i].pop_front();
+             auto& hit = myHits[i];
+             auto& dataPair = dataMap[i][n];
+             hit.id = eventID;
+             hit.TimeStamp = dataPair.first;
+             hit.Pulse = std::move(dataPair.second); 
+             hit.analyzeHit(); 
             }
            tree.Fill();
            eventID++;
+           if(eventID%1000==0)std::cout<<"Processed "<<eventID<<" events "<<std::endl;
          }
-
     } while(csv_file.peek() != EOF);
 
   std::cout<<"Done "<<eventID<<" event processed"<<std::endl;
