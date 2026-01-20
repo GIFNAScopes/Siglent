@@ -121,7 +121,7 @@ int c=0;
           myHits[i].Delay = preamble["delay"];
           myHits[i].Interval = preamble["interval"];
           myHits[i].CodePerDiv = preamble["code"];
-          deadTime += preamble["deadtime_us"];
+          if(i==0)deadTime += preamble["deadtime_us"];
           myHits[i].DeadTime = deadTime;
           dataMap[i] = read_data(csv_file, nFrames, nPoints);
        }
