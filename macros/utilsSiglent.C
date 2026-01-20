@@ -129,7 +129,7 @@ void readData(const std::string &fileName)
 
         std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
         std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
-        std::cout << "Dead Time: " << deadTime <<" seconds" <<<< std::endl;
+        std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
         tree->GetEntry(0);
         c++;
       }
