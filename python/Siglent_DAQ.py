@@ -135,21 +135,21 @@ def get_preamble(sds, channel):
 def main_time_stamp_deal(time):
     global LAST_DAQ_TIMESTAMP, DAQ_DAY_OFFSET
 
-    # Extract all raw bytes from the 16-byte scope structure
-    seconds = time[0x00:0x08]  ## type: double
-    minutes = time[0x00:0x09]  ## type: char
-    hours = time[0x09:0x0a]    ## type: char
-    days = time[0x0a:0x0b]     ## type: char
-    months = time[0x0b:0x0c]   ## type: char
-    year = time[0x0c:0x0e]     ## type: short
+    # Extract all raw bytes with corrected slice indices
+    seconds = time[0x00:0x08]  ## type: double (8 bytes)
+    minutes = time[0x08:0x09]  ## type: char (1 byte)
+    hours = time[0x09:0x0a]    ## type: char (1 byte)
+    days = time[0x0a:0x0b]     ## type: char (1 byte)
+    months = time[0x0b:0x0c]   ## type: char (1 byte)
+    year = time[0x0c:0x0e]     ## type: short (2 bytes)
 
     # Unpack binary data into Python variables
-    seconds = struct.unpack('d', seconds)
-    minutes = struct.unpack('c', minutes)
-    hours = struct.unpack('c', hours)
-    days = struct.unpack('c', days)
-    months = struct.unpack('c', months)
-    year = struct.unpack('h', year)
+    seconds = struct.unpack('d', seconds)[0]
+    minutes = struct.unpack('c', minutes)[0]
+    hours = struct.unpack('c', hours)[0]
+    days = struct.unpack('c', days)[0]
+    months = struct.unpack('c', months)[0]
+    year = struct.unpack('h', year)[0]
 
     # Convert bytes to integers safely
     months = int.from_bytes(months, byteorder='big', signed=False)
@@ -188,7 +188,6 @@ def main_time_stamp_deal(time):
     except Exception as e:
          print(f"? Error parsing timestamp: {e}")
          return 0
-
 
 def read_sequence_raw_frames(sds, channel):
     ##Setup sequence
