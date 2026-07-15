@@ -25,6 +25,8 @@ import threading
 import re # Added for robust filename parsing
 import argparse # Added for command-line argument parsing
 
+SCOPE_START_EPOCH = None
+
 ## Global Variables, need to check if they are correct
 running = True
 TDIV_NUM = [100e-12, 200e-12, 500e-12, 1e-9, 2e-9, 5e-9, 10e-9, 20e-9, 50e-9, 100e-9, 200e-9, 500e-9, 
@@ -129,31 +131,32 @@ def get_preamble(sds, channel):
     return pd.Series(preamble_data)
 
 
-def main_time_stamp_deal(time):
-    seconds = time[0x00:0x08]   ## type:long double
-    minutes = time[0x08:0x09] ## type:char
-    hours = time[0x09:0x0a] ## type:char
-    days = time[0x0a:0x0b] ## type:char
-    months = time[0x0b:0x0c] ## type:char
-    year = time[0x0c:0x0e] ## type:short
-    seconds = struct.unpack('d',seconds)[0]
-    minutes = struct.unpack('c', minutes)[0]
-    hours = struct.unpack('c', hours)[0]
-    days = struct.unpack('c', days)[0]
-    months = struct.unpack('c', months)[0]
-    year = struct.unpack('h', year)[0]
-    months = int.from_bytes(months, byteorder='big', signed=False)
-    days = int.from_bytes(days, byteorder='big', signed=False)
-    hours = int.from_bytes(hours, byteorder='big', signed=False)
-    minutes = int.from_bytes(minutes, byteorder='big', signed=False)
-    #print("{}/{}/{},{}:{}:{}".format(year,months,days,hours,minutes,seconds))
-    try:
-        base_time = datetime.datetime(year, months, days, hours, minutes)
-        full_time = base_time + datetime.timedelta(seconds=seconds)
-        return full_time.timestamp()
-    except Exception as e:
-         print(f"❌ Error parsing timestamp: {e}")
-         return 0
+def main_time_stamp_deal(time_bytes):
+    global SCOPE_START_EPOCH
+    
+    # Extract the high-precision seconds counter (first 8 bytes as double)
+    seconds = struct.unpack('d', time_bytes[0x00:0x08])[0]
+    
+    # Initialize the absolute start time only once at the very first event
+    if SCOPE_START_EPOCH is None:
+        minutes = int.from_bytes(time_bytes[0x08:0x09], byteorder='big')
+        hours = int.from_bytes(time_bytes[0x09:0x0a], byteorder='big')
+        days = int.from_bytes(time_bytes[0x0a:0x0b], byteorder='big')
+        months = int.from_bytes(time_bytes[0x0b:0x0c], byteorder='big')
+        year = struct.unpack('h', time_bytes[0x0c:0x0e])[0]
+        
+        try:
+            base_time = datetime.datetime(year, months, days, hours, minutes)
+            # Anchor the real world epoch minus the scope internal seconds
+            SCOPE_START_EPOCH = base_time.timestamp() - seconds
+            print(f" Sincronización inicial DAQ establecida en: {base_time}")
+        except Exception:
+            # Fallback to local PC clock if scope header is corrupted at boot
+            SCOPE_START_EPOCH = datetime.datetime.now().timestamp() - seconds
+
+    # Calculate the current event time linearly using only the steady seconds counter
+    return SCOPE_START_EPOCH + seconds
+
 
 def read_sequence_raw_frames(sds, channel):
     ##Setup sequence
