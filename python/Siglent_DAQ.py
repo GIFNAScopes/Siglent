@@ -25,7 +25,8 @@ import threading
 import re # Added for robust filename parsing
 import argparse # Added for command-line argument parsing
 
-SCOPE_START_EPOCH = None
+LAST_DAQ_TIMESTAMP = 0.0
+DAQ_DAY_OFFSET = 0.0
 
 ## Global Variables, need to check if they are correct
 running = True
@@ -131,31 +132,62 @@ def get_preamble(sds, channel):
     return pd.Series(preamble_data)
 
 
-def main_time_stamp_deal(time_bytes):
-    global SCOPE_START_EPOCH
-    
-    # Extract the high-precision seconds counter (first 8 bytes as double)
-    seconds = struct.unpack('d', time_bytes[0x00:0x08])[0]
-    
-    # Initialize the absolute start time only once at the very first event
-    if SCOPE_START_EPOCH is None:
-        minutes = int.from_bytes(time_bytes[0x08:0x09], byteorder='big')
-        hours = int.from_bytes(time_bytes[0x09:0x0a], byteorder='big')
-        days = int.from_bytes(time_bytes[0x0a:0x0b], byteorder='big')
-        months = int.from_bytes(time_bytes[0x0b:0x0c], byteorder='big')
-        year = struct.unpack('h', time_bytes[0x0c:0x0e])[0]
-        
-        try:
-            base_time = datetime.datetime(year, months, days, hours, minutes)
-            # Anchor the real world epoch minus the scope internal seconds
-            SCOPE_START_EPOCH = base_time.timestamp() - seconds
-            print(f" Sincronización inicial DAQ establecida en: {base_time}")
-        except Exception:
-            # Fallback to local PC clock if scope header is corrupted at boot
-            SCOPE_START_EPOCH = datetime.datetime.now().timestamp() - seconds
+def main_time_stamp_deal(time):
+    global LAST_DAQ_TIMESTAMP, DAQ_DAY_OFFSET
 
-    # Calculate the current event time linearly using only the steady seconds counter
-    return SCOPE_START_EPOCH + seconds
+    # Extract all raw bytes from the 16-byte scope structure
+    seconds = time[0x00:0x08]  ## type: double
+    minutes = time[0x00:0x09]  ## type: char
+    hours = time[0x09:0x0a]    ## type: char
+    days = time[0x0a:0x0b]     ## type: char
+    months = time[0x0b:0x0c]   ## type: char
+    year = time[0x0c:0x0e]     ## type: short
+
+    # Unpack binary data into Python variables
+    seconds = struct.unpack('d', seconds)
+    minutes = struct.unpack('c', minutes)
+    hours = struct.unpack('c', hours)
+    days = struct.unpack('c', days)
+    months = struct.unpack('c', months)
+    year = struct.unpack('h', year)
+
+    # Convert bytes to integers safely
+    months = int.from_bytes(months, byteorder='big', signed=False)
+    days = int.from_bytes(days, byteorder='big', signed=False)
+    hours = int.from_bytes(hours, byteorder='big', signed=False)
+    minutes = int.from_bytes(minutes, byteorder='big', signed=False)
+
+    try:
+        # 1. Calculate the standard timestamp using all current fields (including minutes)
+        base_time = datetime.datetime(year, months, days, hours, minutes)
+        calculated_timestamp = base_time.timestamp() + seconds
+
+        # 2. Apply the cumulative day offset accumulated so far in this run
+        calculated_timestamp += DAQ_DAY_OFFSET
+
+        # 3. Detect and fix anomalous jumps of ~24 hours (86400 seconds)
+        if LAST_DAQ_TIMESTAMP > 0.0:
+            diff = calculated_timestamp - LAST_DAQ_TIMESTAMP
+
+            # CASE 1: FROG POINT (Scope erroneously jumped +24h forward)
+            if diff > 80000.0:
+                DAQ_DAY_OFFSET -= 86400.0
+                calculated_timestamp -= 86400.0
+                print(f"?? [Python DAQ] Frog point detected. Applying -24h offset.")
+
+            # CASE 2: MIDNIGHT FREEZE (Scope erroneously jumped -24h backward)
+            elif diff < -80000.0:
+                DAQ_DAY_OFFSET += 86400.0
+                calculated_timestamp += 86400.0
+                print(f"?? [Python DAQ] Midnight freeze detected. Applying +24h offset.")
+
+        # Update tracking references for the next event
+        LAST_DAQ_TIMESTAMP = calculated_timestamp
+        return calculated_timestamp
+
+    except Exception as e:
+         print(f"? Error parsing timestamp: {e}")
+         return 0
 
 
 def read_sequence_raw_frames(sds, channel):
