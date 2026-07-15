@@ -146,9 +146,9 @@ int c=0;
            double rawTimeCurrentEvent = dataMap[0][n].first;
            
            if (lastGlobalTime > 0.0 && (lastGlobalTime - (rawTimeCurrentEvent + dayOffsetSeconds)) > 80000.0) {
-               dayOffsetSeconds += 86400.0; // Sumamos un día entero (24h) en segundos
-               std::cout << "?? ¡Cambio de día detectado en evento ID " << eventID 
-                         << "! Aplicando corrección de medianoche (+24h)." << std::endl;
+               dayOffsetSeconds += 86400.0; // We apply one day offset (24h) in seconds
+               std::cout << "?? Day change detected on event ID " << eventID 
+                         << "Applying midnight collection (+24h)." << std::endl;
            }
            
            lastGlobalTime = rawTimeCurrentEvent + dayOffsetSeconds;
