@@ -176,6 +176,10 @@ def read_sequence_raw_frames(sds, channel):
     #print (f"Frames {total_frames} {read_frame}")
     read_times = math.ceil(total_frames/read_frame)
 
+    # Tracking variables for midnight roll-over correction
+    last_timestamp = 0.0
+    day_offset = 0.0
+
     for i in range(0,read_times):
         sds.write(":WAVeform:SEQUence {},{}".format(0,read_frame*i+1)) #First sequence acquisition
 
@@ -200,6 +204,16 @@ def read_sequence_raw_frames(sds, channel):
         for j in range(0,int(read_frame)):
             time = tmstp[16*j:16*(j+1)]
             frame_timestamp = main_time_stamp_deal(time)
+            
+            # Detect midnight roll-over if the raw timestamp jumps back by more than ~22 hours
+            if last_timestamp > 0.0 and (last_timestamp - (frame_timestamp + day_offset)) > 80000.0:
+                day_offset += 86400.0  # Add 24 hours in seconds
+                print(f"?? [Midnight Correction] Roll-over detected on Ch {channel}, Block {i}, Frame {j}. Adding +24h.")
+            
+            # Apply the accumulated daily offset to the current frame
+            frame_timestamp += day_offset
+            last_timestamp = frame_timestamp
+
             if adc_bit > 8:
                 start = int(j * one_frame_pts*2)
                 end = int((j + 1) * one_frame_pts*2)
@@ -221,7 +235,6 @@ def read_sequence_raw_frames(sds, channel):
     df_all_frames = pd.DataFrame(all_frames_data)
 
     return df_all_frames, df_preamble
-
 
 def save_acquisition_data_to_csv(all_channels_data: dict, deadtime_s: float = 0.0, nEvents_in_current_file: int = 0, filename: str = "acquisition_data.csv"):
     """

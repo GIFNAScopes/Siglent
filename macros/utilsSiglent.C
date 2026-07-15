@@ -127,9 +127,21 @@ void readData(const std::string &fileName)
         double runEnd = hit->TimeStamp;
         double deadTime = hit->DeadTime*1E-6 - DTfirstEvent;
 
+        std::time_t unix_time = runStart;
+        std::tm* time_start = std::localtime(&unix_time);
+        if (time_start) {
+          std::cout << "Date: " << std::put_time(time_start, "%Y-%m-%d %H:%M:%S") << std::endl;
+        }
+        unix_time = runEnd;
+        std::tm* time_end = std::localtime(&unix_time);
+        if (time_end) {
+          std::cout << "Date: " << std::put_time(time_end, "%Y-%m-%d %H:%M:%S") << std::endl;
+        }
+        
         std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
         std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
         std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
+        std::cout << "Avg Rate: " << entries/ (runEnd - runStart - deadTime) << " Hz" <<std::endl;
         tree->GetEntry(0);
         c++;
       }

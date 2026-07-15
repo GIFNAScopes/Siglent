@@ -137,20 +137,39 @@ int c=0;
           dataMap[i].reserve(nFrames); 
           dataMap[i] = read_data(csv_file, nFrames, nPoints);
        }
+       
+    double lastGlobalTime = 0.0;
+    double dayOffsetSeconds = 0.0;
 
-         for(int n=0;n<nFrames;n++){
-           for(int i=0;i<channels.size();i++){
-             auto& hit = myHits[i];
-             auto& dataPair = dataMap[i][n];
-             hit.id = eventID;
-             hit.TimeStamp = dataPair.first;
-             hit.Pulse = std::move(dataPair.second); 
-             hit.analyzeHit(); 
-            }
-           tree.Fill();
-           eventID++;
-           if(eventID%1000==0)std::cout<<"Processed "<<eventID<<" events "<<std::endl;
-         }
+    for(int n=0;n<nFrames;n++){
+       if (!channels.empty()) {
+           double rawTimeCurrentEvent = dataMap[0][n].first;
+           
+           if (lastGlobalTime > 0.0 && (lastGlobalTime - (rawTimeCurrentEvent + dayOffsetSeconds)) > 80000.0) {
+               dayOffsetSeconds += 86400.0; // Sumamos un día entero (24h) en segundos
+               std::cout << "?? ¡Cambio de día detectado en evento ID " << eventID 
+                         << "! Aplicando corrección de medianoche (+24h)." << std::endl;
+           }
+           
+           lastGlobalTime = rawTimeCurrentEvent + dayOffsetSeconds;
+       }
+
+       for(int i=0;i<channels.size();i++){
+         auto& hit = myHits[i];
+         auto& dataPair = dataMap[i][n];
+         hit.id = eventID;
+         
+         hit.TimeStamp = dataPair.first + dayOffsetSeconds;
+         
+         hit.Pulse = std::move(dataPair.second); 
+         hit.analyzeHit(); 
+       }
+       
+       tree.Fill();
+       eventID++;
+       if(eventID%1000==0)std::cout<<"Processed "<<eventID<<" events "<<std::endl;
+     }
+
     } while(csv_file.peek() != EOF);
 
   std::cout<<"Done "<<eventID<<" event processed"<<std::endl;
