@@ -396,6 +396,7 @@ if __name__ == "__main__":
         cumulative_deadtime = 0.0
         start_time_read_frames = 0.0
         start_acquisition_clock = time.perf_counter()
+        print(f"Acquisition started at: {time.ctime()}")
 
         while running:
             sds.write(":TRIG:RUN") # Re-arm trigger for continuous acquisition
@@ -430,7 +431,8 @@ if __name__ == "__main__":
 
             nEvents_in_current_file += nFrames
             total_events += nFrames
-            print(f"Acquired {nFrames} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
+            elapsed = time.perf_counter() - start_acquisition_clock
+            print(f"Acquired {nFrames} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events} | Duration: {elapsed:.2f}s")
 
             # Check if the events per file limit is reached
             if nEvents_in_current_file >= config['eventsPerFile']:
