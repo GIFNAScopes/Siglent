@@ -448,7 +448,8 @@ if __name__ == "__main__":
                 running = False
                 break # Exit the while loop
 
-        print("🎯 Adquisition completed.")
+        
+        print("🎯 Adquisition completed at: {time.ctime()}")
         elapsed_total = time.perf_counter() - start_acquisition_clock
         live_time = elapsed_total - cumulative_deadtime
         print(f"Elapsed time: {elapsed_total:.2f}s | DeadTime: {cumulative_deadtime:.2f}s | Live Time: {live_time:.2f}s")
