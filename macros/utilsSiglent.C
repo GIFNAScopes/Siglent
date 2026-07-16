@@ -4,6 +4,7 @@
 
 int i=0;
 int NHITS=0;
+double liveTime=0;
 const std::vector <int> colors {kBlue, kRed, kGreen,kBlack };
 
 TFile * myFile=nullptr;
@@ -138,8 +139,10 @@ void readData(const std::string &fileName)
           std::cout << "Date: " << std::put_time(time_end, "%Y-%m-%d %H:%M:%S") << std::endl;
         }
         
+        liveTime = runEnd - runStart - deadTime;
+        
         std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
-        std::cout << "Live Time: " << runEnd - runStart - deadTime <<" seconds" << std::endl;
+        std::cout << "Live Time: " << liveTime <<" seconds" << std::endl;
         std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
         std::cout << "Avg Rate: " << entries/ (runEnd - runStart - deadTime) << " Hz" <<std::endl;
         tree->GetEntry(0);
