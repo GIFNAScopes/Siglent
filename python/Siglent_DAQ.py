@@ -25,6 +25,9 @@ import threading
 import re # Added for robust filename parsing
 import argparse # Added for command-line argument parsing
 
+LAST_DAQ_TIMESTAMP = 0.0
+DAQ_DAY_OFFSET = 0.0
+
 ## Global Variables, need to check if they are correct
 running = True
 TDIV_NUM = [100e-12, 200e-12, 500e-12, 1e-9, 2e-9, 5e-9, 10e-9, 20e-9, 50e-9, 100e-9, 200e-9, 500e-9, 
@@ -130,29 +133,60 @@ def get_preamble(sds, channel):
 
 
 def main_time_stamp_deal(time):
-    seconds = time[0x00:0x08]   ## type:long double
-    minutes = time[0x08:0x09] ## type:char
-    hours = time[0x09:0x0a] ## type:char
-    days = time[0x0a:0x0b] ## type:char
-    months = time[0x0b:0x0c] ## type:char
-    year = time[0x0c:0x0e] ## type:short
-    seconds = struct.unpack('d',seconds)[0]
+    global LAST_DAQ_TIMESTAMP, DAQ_DAY_OFFSET
+
+    # Extract all raw bytes with corrected slice indices
+    seconds = time[0x00:0x08]  ## type: double (8 bytes)
+    minutes = time[0x08:0x09]  ## type: char (1 byte)
+    hours = time[0x09:0x0a]    ## type: char (1 byte)
+    days = time[0x0a:0x0b]     ## type: char (1 byte)
+    months = time[0x0b:0x0c]   ## type: char (1 byte)
+    year = time[0x0c:0x0e]     ## type: short (2 bytes)
+
+    # Unpack binary data into Python variables
+    seconds = struct.unpack('d', seconds)[0]
     minutes = struct.unpack('c', minutes)[0]
     hours = struct.unpack('c', hours)[0]
     days = struct.unpack('c', days)[0]
     months = struct.unpack('c', months)[0]
     year = struct.unpack('h', year)[0]
+
+    # Convert bytes to integers safely
     months = int.from_bytes(months, byteorder='big', signed=False)
     days = int.from_bytes(days, byteorder='big', signed=False)
     hours = int.from_bytes(hours, byteorder='big', signed=False)
     minutes = int.from_bytes(minutes, byteorder='big', signed=False)
-    #print("{}/{}/{},{}:{}:{}".format(year,months,days,hours,minutes,seconds))
+
     try:
+        # 1. Calculate the standard timestamp using all current fields (including minutes)
         base_time = datetime.datetime(year, months, days, hours, minutes)
-        full_time = base_time + datetime.timedelta(seconds=seconds)
-        return full_time.timestamp()
+        calculated_timestamp = base_time.timestamp() + seconds
+
+        # 2. Apply the cumulative day offset accumulated so far in this run
+        calculated_timestamp += DAQ_DAY_OFFSET
+
+        # 3. Detect and fix anomalous jumps of ~24 hours (86400 seconds)
+        if LAST_DAQ_TIMESTAMP > 0.0:
+            diff = calculated_timestamp - LAST_DAQ_TIMESTAMP
+
+            # CASE 1: FROG POINT (Scope erroneously jumped +24h forward)
+            if diff > 80000.0:
+                DAQ_DAY_OFFSET -= 86400.0
+                calculated_timestamp -= 86400.0
+                print(f"?? [Python DAQ] Frog point detected. Applying -24h offset.")
+
+            # CASE 2: MIDNIGHT FREEZE (Scope erroneously jumped -24h backward)
+            elif diff < -80000.0:
+                DAQ_DAY_OFFSET += 86400.0
+                calculated_timestamp += 86400.0
+                print(f"?? [Python DAQ] Midnight freeze detected. Applying +24h offset.")
+
+        # Update tracking references for the next event
+        LAST_DAQ_TIMESTAMP = calculated_timestamp
+        return calculated_timestamp
+
     except Exception as e:
-         print(f"❌ Error parsing timestamp: {e}")
+         print(f"? Error parsing timestamp: {e}")
          return 0
 
 def read_sequence_raw_frames(sds, channel):
@@ -175,6 +209,10 @@ def read_sequence_raw_frames(sds, channel):
 
     #print (f"Frames {total_frames} {read_frame}")
     read_times = math.ceil(total_frames/read_frame)
+
+    # Tracking variables for midnight roll-over correction
+    last_timestamp = 0.0
+    day_offset = 0.0
 
     for i in range(0,read_times):
         sds.write(":WAVeform:SEQUence {},{}".format(0,read_frame*i+1)) #First sequence acquisition
@@ -200,6 +238,16 @@ def read_sequence_raw_frames(sds, channel):
         for j in range(0,int(read_frame)):
             time = tmstp[16*j:16*(j+1)]
             frame_timestamp = main_time_stamp_deal(time)
+            
+            # Detect midnight roll-over if the raw timestamp jumps back by more than ~22 hours
+            if last_timestamp > 0.0 and (last_timestamp - (frame_timestamp + day_offset)) > 80000.0:
+                day_offset += 86400.0  # Add 24 hours in seconds
+                print(f"?? [Midnight Correction] Roll-over detected on Ch {channel}, Block {i}, Frame {j}. Adding +24h.")
+            
+            # Apply the accumulated daily offset to the current frame
+            frame_timestamp += day_offset
+            last_timestamp = frame_timestamp
+
             if adc_bit > 8:
                 start = int(j * one_frame_pts*2)
                 end = int((j + 1) * one_frame_pts*2)
@@ -221,7 +269,6 @@ def read_sequence_raw_frames(sds, channel):
     df_all_frames = pd.DataFrame(all_frames_data)
 
     return df_all_frames, df_preamble
-
 
 def save_acquisition_data_to_csv(all_channels_data: dict, deadtime_s: float = 0.0, nEvents_in_current_file: int = 0, filename: str = "acquisition_data.csv"):
     """
@@ -349,6 +396,7 @@ if __name__ == "__main__":
         cumulative_deadtime = 0.0
         start_time_read_frames = 0.0
         start_acquisition_clock = time.perf_counter()
+        print(f"Acquisition started at: {time.ctime()}")
 
         while running:
             sds.write(":TRIG:RUN") # Re-arm trigger for continuous acquisition
@@ -383,7 +431,8 @@ if __name__ == "__main__":
 
             nEvents_in_current_file += nFrames
             total_events += nFrames
-            print(f"Acquired {nFrames} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events}")
+            elapsed = time.perf_counter() - start_acquisition_clock
+            print(f"Acquired {nFrames} frames. Total events for '{output_filename}': {nEvents_in_current_file} / {total_events} | Duration: {elapsed:.2f}s")
 
             # Check if the events per file limit is reached
             if nEvents_in_current_file >= config['eventsPerFile']:
@@ -399,7 +448,8 @@ if __name__ == "__main__":
                 running = False
                 break # Exit the while loop
 
-        print("🎯 Adquisition completed.")
+        
+        print("🎯 Adquisition completed at: {time.ctime()}")
         elapsed_total = time.perf_counter() - start_acquisition_clock
         live_time = elapsed_total - cumulative_deadtime
         print(f"Elapsed time: {elapsed_total:.2f}s | DeadTime: {cumulative_deadtime:.2f}s | Live Time: {live_time:.2f}s")
