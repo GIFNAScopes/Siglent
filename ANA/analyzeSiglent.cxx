@@ -114,7 +114,11 @@ void csv2root (const std::string &fileName, const std::string &outFileName, int 
      for(int i=0;i<channels.size();i++)
        tree.Branch(channels[i].c_str(), &myHits[i]);
 
-int c=0;
+    int c=0;
+
+    // --- TIME CONTROL VARIABLES (INDEPENDENT OF BASH REBOOTS) ---
+    double lastValidTimestamp = 0.0;
+    double runningOffset = 0.0;
 
     do {
       int nFrames=0;
@@ -137,20 +141,57 @@ int c=0;
           dataMap[i].reserve(nFrames); 
           dataMap[i] = read_data(csv_file, nFrames, nPoints);
        }
+       
+    for(int n=0; n<nFrames; n++){
+       
+       if (!channels.empty()) {
+           // 1. Extract the raw timestamp from the first available channel for frame [n]
+           double currentTimestamp = dataMap[0][n].first;
 
-         for(int n=0;n<nFrames;n++){
-           for(int i=0;i<channels.size();i++){
-             auto& hit = myHits[i];
-             auto& dataPair = dataMap[i][n];
-             hit.id = eventID;
-             hit.TimeStamp = dataPair.first;
-             hit.Pulse = std::move(dataPair.second); 
-             hit.analyzeHit(); 
-            }
-           tree.Fill();
-           eventID++;
-           if(eventID%1000==0)std::cout<<"Processed "<<eventID<<" events "<<std::endl;
-         }
+           // Apply the accumulated offset for this specific file execution
+           currentTimestamp += runningOffset;
+
+           if (lastValidTimestamp > 0.0) {
+               double diff = currentTimestamp - lastValidTimestamp;
+
+               // CASE 1: FROG POINT (Scope erroneously jumped ~24h into the FUTURE)
+               if (diff > 80000.0) {
+                   runningOffset -= 86400.0;    // Register the 24h forward shift
+                   currentTimestamp -= 86400.0; // Correct the current event time
+                   std::cout << "?? [Analysis] Frog Point detected at eventID " << eventID << ". Applying -24h." << std::endl;
+               }
+               // CASE 2: MIDNIGHT FREEZE (Scope erroneously jumped ~24h into the PAST)
+               else if (diff < -80000.0) {
+                   runningOffset += 86400.0;    // Register the 24h backward shift
+                   currentTimestamp += 86400.0; // Correct the current event time
+                   std::cout << "?? [Analysis] Midnight Freeze detected at eventID " << eventID << ". Applying +24h." << std::endl;
+               }
+           }
+
+           // CRUCIAL: Overwrite the timestamp for ALL channels in this frame with the corrected value
+           for(size_t ch_idx = 0; ch_idx < channels.size(); ch_idx++) {
+               dataMap[ch_idx][n].first = currentTimestamp;
+           }
+           
+           // Update the reference for the next iteration of the loop
+           lastValidTimestamp = currentTimestamp;
+       }
+
+       // 2. Normal data assignment to the TTree branches (Your original code)
+       for(int i=0; i<channels.size(); i++){
+         auto& hit = myHits[i];
+         auto& dataPair = dataMap[i][n];
+         hit.id = eventID;
+         hit.TimeStamp = dataPair.first; // This now holds the perfectly leveled timestamp across all branches
+         hit.Pulse = std::move(dataPair.second); 
+         hit.analyzeHit(); 
+       }
+       
+       tree.Fill();
+       eventID++;
+       if(eventID%1000==0)std::cout<<"Processed "<<eventID<<" events "<<std::endl;
+     }
+
     } while(csv_file.peek() != EOF);
 
   std::cout<<"Done "<<eventID<<" event processed"<<std::endl;
