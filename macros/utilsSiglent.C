@@ -7,6 +7,12 @@ int NHITS=0;
 double liveTime=0;
 const std::vector <int> colors {kBlue, kRed, kGreen,kBlack };
 
+// Variables globales/estáticas para mantener el histórico acumulado
+double totalDuration = 0.0;
+double totalLiveTime = 0.0;
+double totalDeadTime = 0.0;
+int totalEntriesAccumulated = 0;
+
 TFile * myFile=nullptr;
 TChain * tree=nullptr;
 std::map<std::string, Hit *> myHits;
@@ -61,97 +67,144 @@ void saveSpc(TH1 * h, const std::string &filename)
   fq.close();
 }
 
-// SOLO CARGA  LOS DATOS Y LANZA EL VIEWER, SIN REPRESENTAR NADA
-// Usage: readData filename 
-// Filename : FILENAMExxxx.csv
-void readData(const std::string &fileName)
+/// CARGA O AÑADE DATOS AL TCHAIN Y LANZA EL VIEWER
+// Usage inicial: readData("filename")
+// Usage para añadir: readData("filename", true)
+void readData(const std::string &fileName, bool appendData = false)
 {
-
-  tree = new TChain("tree");
-
-  struct stat fb;
-   char outFileName[1024];
-   sprintf(outFileName,"%s.root", fileName.c_str());
-   if(fileName.find(".root") !=std::string::npos && stat (fileName.c_str(), &fb) == 0){
-      std::cout<<fileName<<std::endl;
-      tree->Add(fileName.c_str(), -1);
-    } else if(stat (outFileName, &fb) == 0){
-      std::cout<<outFileName<<std::endl;
-      tree->Add(outFileName, -1);
-    } else {
-      int nFiles=1;
-      sprintf(outFileName,"%s.%02d.root", fileName.c_str(), nFiles);
-        if(stat (outFileName, &fb) !=0){
-          std::cerr<<"Filename "<<outFileName<<" not found"<<std::endl;
-          return;
-        }
-        while(stat (outFileName, &fb) == 0 ){
-          std::cout<<outFileName<<std::endl;
-          tree->Add(outFileName, -1);
-          nFiles++;
-          sprintf(outFileName,"%s.%02d.root", fileName.c_str(), nFiles);
-        }
+  // 1. GESTIÓN DE MEMORIA Y RESET DE ACUMULADORES
+  if (!appendData) {
+    if (tree != nullptr) {
+      delete tree; 
     }
+    tree = new TChain("tree");
+    
+    // Reseteamos los acumuladores si es una carga limpia
+    totalDuration = 0.0;
+    totalLiveTime = 0.0;
+    totalDeadTime = 0.0;
+    totalEntriesAccumulated = 0;
+  } else {
+    if (!tree) {
+      tree = new TChain("tree");
+    }
+  }
 
-  // Set stimation of the tree size 
+  // Guardamos cuántos eventos había ANTES de añadir los nuevos archivos
+  int previousEntries = tree->GetEntries();
+
+  // 2. BÚSQUEDA Y CARGA DE ARCHIVOS (Mismo comportamiento)
+  struct stat fb;
+  char outFileName[1024];
+  sprintf(outFileName, "%s.root", fileName.c_str());
+  if (fileName.find(".root") != std::string::npos && stat(fileName.c_str(), &fb) == 0) {
+    std::cout << fileName << std::endl;
+    tree->Add(fileName.c_str(), -1);
+  } else if (stat(outFileName, &fb) == 0) {
+    std::cout << outFileName << std::endl;
+    tree->Add(outFileName, -1);
+  } else {
+    int nFiles = 1;
+    sprintf(outFileName, "%s.%02d.root", fileName.c_str(), nFiles);
+    if (stat(outFileName, &fb) != 0) {
+      std::cerr << "Filename " << outFileName << " not found" << std::endl;
+      return;
+    }
+    while (stat(outFileName, &fb) == 0) {
+      std::cout << outFileName << std::endl;
+      tree->Add(outFileName, -1);
+      nFiles++;
+      sprintf(outFileName, "%s.%02d.root", fileName.c_str(), nFiles);
+    }
+  }
+
   int entries = tree->GetEntries();
   tree->SetEstimate(entries);
 
-  //tree->Print();
-
-   for(NHITS=0;NHITS<4;NHITS++) {
-    std::string brName = "C"+std::to_string(NHITS+1);
-    if(!tree->GetBranch(brName.c_str()))continue;
-    Hit *hit = nullptr;
-    myHits[brName] = hit;
+  // 3. MAPEO DE RAMAS
+  for (NHITS = 0; NHITS < 4; NHITS++) {
+    std::string brName = "C" + std::to_string(NHITS + 1);
+    if (!tree->GetBranch(brName.c_str())) continue;
+    
+    if (!appendData || myHits.find(brName) == myHits.end()) {
+      Hit *hit = nullptr;
+      myHits[brName] = hit;
+    }
   }
 
-  std::cout<<"Number of channels "<<myHits.size()<<std::endl;
+  std::cout << "Number of channels " << myHits.size() << std::endl;
 
-  int c=0;
+  // 4. PROCESAMIENTO DE METADATOS DEL NUEVO BLOQUE DE DATOS
+  int c = 0;
   double DTfirstEvent = 0.;
-  for(auto & [brName, hit] : myHits ){
+  for (auto & [brName, hit] : myHits) {
     tree->SetBranchAddress(brName.c_str(), &hit);
-    tree->GetEntry(0);
-    std::cout<<brName<< " "<<  hit->VDiv<<" V/Div "<<std::endl;
-      if(c==0){
-        std::cout << "Sampling Rate: " << hit->Interval*1E9 << " ns/pt"<< std::endl;
-        std::cout << "Pulse Size: " << hit->Pulse.size() << " points"<<std::endl;
-        std::cout << "Pulse Length: "<< hit->Interval*1E9*hit->Pulse.size()<< " ns"<< std::endl;
-        std::cout << "Delay: " << hit->Delay*1E9 << " ns" << std::endl << std::endl;
+    
+    // Obtenemos el PRIMER evento del NUEVO bloque añadido
+    tree->GetEntry(previousEntries); 
+    
+    std::cout << brName << " " << hit->VDiv << " V/Div " << std::endl;
+    if (c == 0) {
+      std::cout << "Sampling Rate: " << hit->Interval * 1E9 << " ns/pt" << std::endl;
+      std::cout << "Pulse Size: " << hit->Pulse.size() << " points" << std::endl;
+      std::cout << "Pulse Length: " << hit->Interval * 1E9 * hit->Pulse.size() << " ns" << std::endl;
+      std::cout << "Delay: " << hit->Delay * 1E9 << " ns" << std::endl << std::endl;
 
-        std::cout << "N Entries: " << entries << std::endl;
-        double runStart = hit->TimeStamp;
-        if(hit->id !=0)DTfirstEvent = hit->DeadTime*1E-6;
+      // Datos de tiempo de la nueva tanda
+      double runStart = hit->TimeStamp;
+      if (hit->id != 0) DTfirstEvent = hit->DeadTime * 1E-6;
 
-        tree->GetEntry(entries-1);
-        double runEnd = hit->TimeStamp;
-        double deadTime = hit->DeadTime*1E-6 - DTfirstEvent;
+      // Obtenemos el ÚLTIMO evento de la NUEVA tanda añadida
+      tree->GetEntry(entries - 1);
+      double runEnd = hit->TimeStamp;
+      double deadTime = hit->DeadTime * 1E-6 - DTfirstEvent;
+      double liveTimeFile = runEnd - runStart - deadTime;
 
-        std::time_t unix_time = runStart;
-        std::tm* time_start = std::localtime(&unix_time);
-        if (time_start) {
-          std::cout << "Date: " << std::put_time(time_start, "%Y-%m-%d %H:%M:%S") << std::endl;
-        }
-        unix_time = runEnd;
-        std::tm* time_end = std::localtime(&unix_time);
-        if (time_end) {
-          std::cout << "Date: " << std::put_time(time_end, "%Y-%m-%d %H:%M:%S") << std::endl;
-        }
-        
-        liveTime = runEnd - runStart - deadTime;
-        
-        std::cout << "Duration: " << runEnd - runStart <<" seconds"<< std::endl;
-        std::cout << "Live Time: " << liveTime <<" seconds" << std::endl;
-        std::cout << "Dead Time: " << deadTime <<" seconds" << std::endl;
-        std::cout << "Avg Rate: " << entries/ (runEnd - runStart - deadTime) << " Hz" <<std::endl;
-        tree->GetEntry(0);
-        c++;
+      // Mostramos las fechas del bloque actual que se acaba de leer
+      std::time_t unix_time = runStart;
+      std::tm* time_start = std::localtime(&unix_time);
+      if (time_start) {
+        std::cout << "Current Batch Start: " << std::put_time(time_start, "%Y-%m-%d %H:%M:%S") << std::endl;
       }
-  }
+      unix_time = runEnd;
+      std::tm* time_end = std::localtime(&unix_time);
+      if (time_end) {
+        std::cout << "Current Batch End: " << std::put_time(time_end, "%Y-%m-%d %H:%M:%S") << std::endl;
+      }
+      
+      // ACUMULACIÓN RECTIFICADA: Sumamos los tiempos reales de esta corrida a los acumulados
+      totalDuration += (runEnd - runStart);
+      totalDeadTime += deadTime;
+      totalLiveTime += liveTimeFile;
+      totalEntriesAccumulated = entries; // Actualizamos el total de entradas del TChain
 
+      // Imprimimos las estadísticas globales unificadas (libres de huecos temporales)
+      std::cout << "\n=== ESTADÍSTICAS ACUMULADAS ===" << std::endl;
+      std::cout << "N Total Entries: " << totalEntriesAccumulated << std::endl;
+      std::cout << "Total Active Duration: " << totalDuration << " seconds" << std::endl;
+      std::cout << "Total Live Time: " << totalLiveTime << " seconds" << std::endl;
+      std::cout << "Total Dead Time: " << totalDeadTime << " seconds" << std::endl;
+      
+      if (totalLiveTime > 0) {
+        std::cout << "Avg Rate (on Live Time): " << totalEntriesAccumulated / totalLiveTime << " Hz" << std::endl;
+      } else {
+        std::cout << "Avg Rate: 0 Hz" << std::endl;
+      }
+      std::cout << "===============================\n" << std::endl;
+
+      // Devolvemos el puntero al evento 0 por consistencia con tu código original
+      tree->GetEntry(0);
+      c++;
+    }
+  }
 }
 
+// AÑADE DATOS AL TCHAIN EXISTENTE LLAMANDO A READDATA EN MODO APPEND
+// Usage: addData filename
+void addData(const std::string &fileName)
+{
+  readData(fileName, true);
+}
 
 ///////////////////////////////////////////
 // Draw pulses corresponding to p event
