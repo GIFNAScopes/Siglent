@@ -118,6 +118,8 @@ void readData(const std::string &fileName, bool appendData = false)
     }
   }
 
+  tree->Lookup();
+
   int entries = tree->GetEntries();
   tree->SetEstimate(entries);
 
@@ -179,7 +181,7 @@ void readData(const std::string &fileName, bool appendData = false)
       totalEntriesAccumulated = entries; // Actualizamos el total de entradas del TChain
 
       // Imprimimos las estadísticas globales unificadas (libres de huecos temporales)
-      std::cout << "\n=== ESTADÍSTICAS ACUMULADAS ===" << std::endl;
+      std::cout << "\n=== ACUMULATED STATS ===" << std::endl;
       std::cout << "N Total Entries: " << totalEntriesAccumulated << std::endl;
       std::cout << "Total Active Duration: " << totalDuration << " seconds" << std::endl;
       std::cout << "Total Live Time: " << totalLiveTime << " seconds" << std::endl;
