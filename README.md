@@ -39,6 +39,7 @@ Usefull commands:
 
 SigRoot (load root, TDS libraries and macros ):
 * Load root files (analyzed files) `readData("TFIIIxxx.raw")`
+* Append root files `addData("TFIIIxxx.raw")`
 * Draw amplitude (int) vs area `tree->Draw("C1.DC:C1.Area")`
 * Histogram with a given bin size and limits `tree->Draw("C1.Area>>h(1000,0,100000)")`
 * Save spectrum (histogram) `saveSpc(h,"Test.txt")`
